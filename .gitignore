@@ -1,0 +1,20 @@
+# Secrets & credentials
+.env
+.env.*
+*.key
+*.pem
+*.p12
+
+# Cookies & tokens
+*cookies*.json
+*token*.json
+*session*.json
+
+# Cache & temp
+__pycache__/
+*.pyc
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,1151 @@
+#!/usr/bin/env python3
+"""fbwho - Lookup who posted a Facebook post by URL or post ID"""
+
+import os
+import sys
+import re
+import json
+import time
+import html
+import http.cookiejar
+import requests
+from urllib.parse import urlparse, parse_qs
+
+PW_CHROME = os.environ.get('PW_CHROME') or os.path.expanduser('~/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome')
+
+def playwright_fetch(url, cookies_path=None, wait=6):
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        return None
+    if not os.path.exists(PW_CHROME):
+        return None
+    jar = load_cookies(cookies_path) if cookies_path else None
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                executable_path=PW_CHROME,
+                args=['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+            )
+            ctx = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                viewport={'width': 1280, 'height': 720},
+            )
+            if jar:
+                pw_cookies = []
+                for c in jar:
+                    pw_cookies.append({
+                        'name': c.name,
+                        'value': c.value,
+                        'domain': c.domain,
+                        'path': c.path or '/',
+                        'httpOnly': False,
+                        'secure': c.secure or False,
+                        'sameSite': 'Lax',
+                    })
+                ctx.add_cookies(pw_cookies)
+            page = ctx.new_page()
+            page.goto(url, timeout=20000, wait_until='domcontentloaded')
+            page.wait_for_timeout(wait * 1000)
+            result = page.evaluate('''() => {
+                const r = {};
+                r.profile_pic = '';
+                const svgImages = document.querySelectorAll('svg image');
+                for (const img of svgImages) {
+                    const href = img.getAttribute('xlink:href') || img.getAttribute('href') || '';
+                    if (href.includes('fbcdn') && href.includes('.jpg')) {
+                        r.profile_pic = href;
+                        break;
+                    }
+                }
+                if (!r.profile_pic) {
+                    const all = document.querySelectorAll('img');
+                    const candidates = [];
+                    for (const img of all) {
+                        const src = img.src || '';
+                        if (src.includes('fbcdn') && src.includes('.jpg') && !src.includes('emoji')) {
+                            const w = img.naturalWidth || img.width || 0;
+                            if (w >= 80 && w <= 300) candidates.push({ src, w });
+                        }
+                    }
+                    candidates.sort((a, b) => b.w - a.w);
+                    if (candidates.length) r.profile_pic = candidates[0].src;
+                }
+                const title = document.querySelector('title');
+                r.title = title ? title.innerText : '';
+                const timeEls = document.querySelectorAll('[data-utime], time, [data-tooltip-content]');
+                r.timestamps = [];
+                for (const el of timeEls) {
+                    const utime = el.getAttribute('data-utime');
+                    if (utime) r.timestamps.push(utime);
+                }
+                return r;
+            }''')
+            browser.close()
+            return result
+    except Exception as e:
+        return None
+
+
+def playwright_login(email, password, timeout_sec=30):
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print(f"  {RED}✗ playwright not installed (pip install playwright){RST}")
+        return None
+    if not os.path.exists(PW_CHROME):
+        print(f"  {RED}✗ Chromium not found at {PW_CHROME}{RST}")
+        print(f"  {DIM}   ↳ Run: python3 -m playwright install chromium{RST}")
+        return None
+    print(f"  {DIM}   ↳ Launching browser...{RST}")
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(
+                headless=True,
+                executable_path=PW_CHROME,
+                args=['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+            )
+            ctx = browser.new_context(
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                viewport={'width': 1280, 'height': 720},
+            )
+            page = ctx.new_page()
+            print(f"  {DIM}   ↳ Navigating to facebook.com/login...{RST}")
+            page.goto('https://www.facebook.com/login', timeout=15000, wait_until='domcontentloaded')
+            page.wait_for_timeout(2000)
+            print(f"  {DIM}   ↳ Filling credentials...{RST}")
+            page.fill('#email', email)
+            page.fill('#pass', password)
+            page.click('button[name="login"]')
+            page.wait_for_timeout(5000)
+            cur_url = page.url
+            if 'checkpoint' in cur_url:
+                print(f"  {YLW}   ↳ Login checkpoint (2FA/vetting). Trying to continue...{RST}")
+                page.wait_for_timeout(10000)
+                cur_url = page.url
+            if 'login' in cur_url and 'checkpoint' not in cur_url:
+                print(f"  {RED}✗ Login failed — wrong credentials?{RST}")
+                browser.close()
+                return None
+            print(f"  {GRN}   ↳ Logged in as {page.title()}{RST}")
+            cookies = ctx.cookies()
+            browser.close()
+            jar = requests.cookies.RequestsCookieJar()
+            for c in cookies:
+                jar.set(c['name'], c['value'], domain=c['domain'].lstrip('.'),
+                        path=c.get('path', '/'), secure=c.get('secure', False))
+            return jar
+    except Exception as e:
+        print(f"  {RED}✗ Login error: {e}{RST}")
+        return None
+
+
+def retry_request(url, headers=None, cookies=None, params=None, method='get', retries=3, backoff=2, timeout=12):
+    last_exc = None
+    for attempt in range(retries):
+        try:
+            fn = getattr(requests, method)
+            resp = fn(url, headers=headers, cookies=cookies, params=params, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except requests.RequestException as e:
+            last_exc = e
+            if attempt < retries - 1:
+                time.sleep(backoff * (2 ** attempt))
+    return None
+
+
+GRN = '\033[92m'
+CYN = '\033[96m'
+YLW = '\033[93m'
+RED = '\033[91m'
+BLD = '\033[1m'
+DIM = '\033[2m'
+RST = '\033[0m'
+
+def hacker_loading():
+    os.system('clear')
+    try:
+        cols = os.get_terminal_size().columns
+    except OSError:
+        cols = 80
+
+    steps = [
+        (f"{GRN}[*] Initializing Python modules...{RST}", lambda: __import__('requests')),
+        (f"{GRN}[*] Loading reconnaissance modules...{RST}", lambda: None),
+        (f"{GRN}[*] Checking Playwright engine...{RST}",
+         lambda: __import__('playwright.sync_api') if os.path.exists(PW_CHROME) else None),
+        (f"{GRN}[*] Scanning cookie store...{RST}",
+         lambda: load_cookies(
+             os.environ.get('FB_COOKIES') or
+             (lambda p: p if os.path.exists(p) else None)(os.path.expanduser('~/.fbwho_cookies.json'))
+         ) if (os.environ.get('FB_COOKIES') or os.path.exists(os.path.expanduser('~/.fbwho_cookies.json'))) else None),
+        (f"{GRN}[*] Validating access token...{RST}",
+         lambda: retry_request('https://graph.facebook.com/v19.0/me', params={
+             'fields': 'name,id',
+             'access_token': os.environ.get('FB_ACCESS_TOKEN', '')
+         }, timeout=8, retries=1) if os.environ.get('FB_ACCESS_TOKEN') else None),
+        (f"{GRN}[*] Target acquisition system ready{RST}", lambda: None),
+    ]
+
+    bar_len = 28
+    for i, (msg, work) in enumerate(steps):
+        pct = int((i + 1) / len(steps) * 100)
+        filled = int((i + 1) / len(steps) * bar_len)
+
+        try:
+            result = work()
+            ok = result is not None or i in (1, 5)
+            status = GRN if ok else YLW
+            prefix = f"{status}[+]"
+        except Exception:
+            prefix = f"{YLW}[-]"
+
+        line = f"  {prefix} {msg[5:]} {GRN}{'█' * filled}{DIM}{'░' * (bar_len - filled)}{RST} {GRN}{pct}%{RST}"
+        padding = max(0, (cols - len(line)) // 2)
+        line = ' ' * padding + line
+        for c in range(len(line)):
+            print(f'\r{GRN}' + line[:c+1] + f'{RST}', end='', flush=True)
+            time.sleep(0.005)
+        print()
+        time.sleep(0.15)
+
+    time.sleep(0.8)
+
+LOGO = f"""{BLD}{CYN}
+  ███████╗██████╗ ██╗    ██╗██╗  ██╗ ██████╗ 
+  ██╔════╝██╔══██╗██║    ██║██║  ██║██╔═══██╗
+  █████╗  ██████╔╝██║ █╗ ██║███████║██║   ██║
+  ██╔══╝  ██╔══██╗██║███╗██║██╔══██║██║   ██║
+  ██║     ██████╔╝╚███╔███╔╝██║  ██║╚██████╔╝
+  ╚═╝     ╚═════╝  ╚══╝╚══╝ ╚═╝  ╚═╝ ╚═════╝ {RST}"""
+
+
+def extract_post_id(url):
+    patterns = [
+        r'/posts/([^/?]+)',
+        r'/videos/([^/?]+)',
+        r'/reel/([^/?]+)',
+        r'/stories/([^/?]+)',
+        r'fbid=(\d+)',
+        r'story_fbid=(\d+)',
+        r'photo\.php\?.*fbid=(\d+)',
+        r'/photo/?\?fbid=(\d+)',
+        r'/photos/[^/]+/(\d+)',
+        r'permalink\.php\?story_fbid=(\d+)',
+        r'/permalink/(\d+)',
+        r'/groups/\d+/posts/(\d+)',
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return None
+
+
+EXCLUDED = frozenset({'posts', 'videos', 'reel', 'stories', 'photo', 'photo.php', 'photos', 'permalink.php', 'story.php', 'watch', 'share', 'hashtag', 'groups', 'events', 'notes', 'pages', 'login', 'signup', 'me', 'messages', 'notifications', 'settings', 'friends', 'marketplace', 'watch', 'gaming'})
+
+def extract_username(url):
+    u = urlparse(url)
+    parts = [p for p in u.path.split('/') if p]
+    if parts:
+        first = parts[0].lower()
+        if first not in EXCLUDED:
+            return parts[0]
+    m = re.findall(r'facebook\.com/([a-zA-Z0-9._-]+)', url)
+    for name in m:
+        if name.lower() not in EXCLUDED:
+            return name
+    return None
+
+
+def extract_group_id(url):
+    m = re.search(r'/groups/(\d+)', url)
+    return m.group(1) if m else None
+
+
+def decode_unicode_escapes(s):
+    return re.sub(r'\\u([0-9a-fA-F]{4})', lambda m: chr(int(m.group(1), 16)), s)
+
+
+def rgb_to_xterm(r, g, b):
+    best = 0
+    best_dist = 1e9
+    for ci in range(16, 256):
+        if ci < 232:
+            idx = ci - 16
+            cr = (idx // 36) * 51
+            cg = ((idx // 6) % 6) * 51
+            cb = (idx % 6) * 51
+        else:
+            level = (ci - 232) * 10 + 8
+            cr = cg = cb = level
+        dr = r - cr
+        dg = g - cg
+        db = b - cb
+        dist = dr * dr + dg * dg + db * db
+        if dist < best_dist:
+            best_dist = dist
+            best = ci
+    return best
+
+
+def render_pic(url, width=24, circular=True):
+    try:
+        from PIL import Image
+        import io
+        resp = retry_request(url, timeout=5, retries=1)
+        if not resp:
+            return None
+        img = Image.open(io.BytesIO(resp.content))
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        aspect = img.height / img.width
+        h = max(int(width * aspect * 0.5), 4)
+        img = img.resize((width, h * 2), Image.LANCZOS)
+        pixels = list(img.getdata())
+        cx, cy = width / 2, h
+        radius = min(cx, h)
+        lines = []
+        for y in range(h):
+            row = ''
+            for x in range(width):
+                t = y * 2
+                if circular:
+                    dx1, dy1 = x + 0.5 - cx, (t + 0.5) - cy
+                    dx2, dy2 = x + 0.5 - cx, (t + 1.5) - cy
+                    in1 = dx1*dx1 + dy1*dy1 <= radius*radius
+                    in2 = dx2*dx2 + dy2*dy2 <= radius*radius
+                    if not in1 and not in2:
+                        row += '\033[0m '
+                        continue
+                    if not in1:
+                        r2, g2, b2 = pixels[(t + 1) * width + x]
+                        c2 = rgb_to_xterm(r2, g2, b2)
+                        row += f'\033[38;5;{c2};48;5;{c2}m\u2584'
+                        continue
+                    if not in2:
+                        r1, g1, b1 = pixels[t * width + x]
+                        c1 = rgb_to_xterm(r1, g1, b1)
+                        row += f'\033[38;5;{c1};48;5;{c1}m\u2580'
+                        continue
+                r1, g1, b1 = pixels[t * width + x]
+                r2, g2, b2 = pixels[(t + 1) * width + x]
+                c1 = rgb_to_xterm(r1, g1, b1)
+                c2 = rgb_to_xterm(r2, g2, b2)
+                row += f'\033[38;5;{c1};48;5;{c2}m\u2584'
+            lines.append(row + '\033[0m')
+        return lines
+    except Exception as e:
+        return None
+
+
+def print_pic(url):
+    lines = render_pic(url, width=24, circular=True)
+    if lines:
+        try:
+            cols = os.get_terminal_size().columns
+        except OSError:
+            cols = 80
+        for line in lines:
+            pad = max(0, (cols - 24) // 2)
+            print(f"{' ' * pad}{line}")
+
+
+def is_rtl(text):
+    return bool(re.search(r'[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]', text))
+
+
+def wrap_rtl(text):
+    if text and is_rtl(text):
+        return f'\u202b{text}\u202c'
+    return text
+
+
+def extract_display_name(html, username):
+    patterns = [
+        r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"',
+        r'<meta[^>]+property="article:author"[^>]+content="([^"]+)"',
+        r'"actorName":"([^"]+)"',
+        r'"ownerName":"([^"]+)"',
+        r'"displayName":"([^"]+)"',
+        r'"nameForDisplay":"([^"]+)"',
+        r'"userName":"([^"]+)"',
+    ]
+
+    results = []
+    for p in patterns:
+        for m in re.finditer(p, html, re.IGNORECASE):
+            results.append(m.group(1))
+
+    BAD_NAMES = frozenset({'error', 'facebook', 'connection_quality', 'latency_level', 'is_ad', 'is_live', 'fbls_tier', 'content_category', 'streaming_implementation', 'is_latency_sensitive_broadcast'})
+
+    for name in results:
+        cleaned = re.sub(r'\s+', ' ', decode_unicode_escapes(name)).strip()
+        if cleaned and cleaned.lower() not in BAD_NAMES and 'Facebook' not in cleaned and len(cleaned) > 1 and len(cleaned) < 100:
+            return cleaned
+
+    return None
+
+
+def extract_from_json_ld(html):
+    m = re.search(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', html, re.DOTALL)
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1))
+        if isinstance(data, list):
+            data = data[0]
+        if isinstance(data, dict):
+            author = data.get('author') or data.get('publisher') or {}
+            if isinstance(author, dict):
+                return author.get('name')
+    except (json.JSONDecodeError, AttributeError):
+        pass
+    return None
+
+
+def extract_poster_name(html, username, group_id=None):
+    name = extract_from_json_ld(html)
+    if name:
+        return name
+
+    name = extract_display_name(html, username)
+    if name:
+        return name
+
+    soup = None
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(html, 'html.parser')
+    except ImportError:
+        return None
+
+    if soup:
+        for tag in soup.find_all('meta'):
+            if tag.get('property') in ('og:title', 'article:author') or tag.get('name') in ('author', 'twitter:title'):
+                c = tag.get('content', '')
+                if c and 'Facebook' not in c:
+                    return re.sub(r'\s+', ' ', c).strip()
+
+        for tag in soup.find_all('a'):
+            href = tag.get('href', '')
+            if username and username.lower() in href.lower() and tag.text.strip():
+                txt = tag.text.strip()
+                if txt and len(txt) < 80:
+                    return txt
+
+    return None
+
+
+def fetch_mbasic(url, cookies=None):
+    u = urlparse(url)
+    mbasic_url = f"https://mbasic.facebook.com{u.path}"
+    if u.query:
+        mbasic_url += f"?{u.query}"
+
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G960F) AppleWebKit/537.36',
+    }
+
+    resp = retry_request(mbasic_url, headers=headers, cookies=cookies, timeout=15)
+    if resp:
+        return resp.text
+    return None
+
+
+def load_cookies(path):
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        if isinstance(data, dict) and 'data' in data:
+            print(f"  {YLW}   ↳ Encrypted cookie file — re-export as JSON{RST}")
+            return None
+        jar = requests.cookies.RequestsCookieJar()
+        if isinstance(data, list):
+            for c in data:
+                name = c.get('name') or c.get('key') or ''
+                value = c.get('value') or ''
+                domain = c.get('domain', '').lstrip('.')
+                path_c = c.get('path', '/')
+                secure = c.get('secure', False)
+                if name and value and domain:
+                    jar.set(name, value, domain=domain, path=path_c, secure=secure)
+            return jar
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        pass
+    try:
+        jar = requests.cookies.RequestsCookieJar()
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or line.startswith('#'):
+                    continue
+                parts = line.split('\t')
+                if len(parts) >= 7:
+                    domain, _, path_c, secure, _, name, value = parts[:7]
+                    jar.set(name, value, domain=domain.lstrip('.'), path=path_c, secure=(secure.upper() == 'TRUE'))
+        return jar
+    except Exception:
+        return None
+
+
+def fetch_page(url, cookies=None, retries=2):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    }
+    resp = retry_request(url, headers=headers, cookies=cookies, timeout=10, retries=retries)
+    if resp:
+        return resp.text
+    return None
+
+
+def find_username(html, post_id):
+    patterns = [
+        r'"username":"([^"]+)"',
+        r'"userName":"([^"]+)"',
+        r'/([a-zA-Z0-9._]+)/posts/' + re.escape(post_id),
+        r'profile\.php\?id=(\d+)',
+    ]
+    for p in patterns:
+        m = re.search(p, html)
+        if m:
+            return m.group(1)
+    return None
+
+
+def parse_post_id_from_input(raw):
+    if raw.startswith('http://') or raw.startswith('https://'):
+        return raw, None
+    if raw.startswith('fb.com/'):
+        return f"https://{raw}", None
+    if '/' in raw or '.' in raw:
+        if not raw.startswith('http'):
+            return f"https://{raw}", None
+        return raw, None
+
+    return None, raw
+
+
+def fetch_user_group_activity(group_id, user_id, cookies):
+    urls = [
+        f"https://www.facebook.com/groups/{group_id}/user/{user_id}/",
+        f"https://mbasic.facebook.com/groups/{group_id}/user/{user_id}/",
+    ]
+    for url in urls:
+        html = fetch_page(url, cookies=cookies)
+        if html:
+            return html
+    return None
+
+
+def extract_user_activity(html, group_id, user_id=None):
+    posts = []
+    comments = []
+    seen_posts = set()
+    seen_comments = set()
+
+    # Find post permalinks
+    gid = re.escape(group_id)
+    for m in re.finditer(r'href="(/groups/' + gid + r'/permalink/(\d+)[^"]*)"', html):
+        post_id = m.group(2)
+        if post_id not in seen_posts:
+            seen_posts.add(post_id)
+            posts.append(f"https://www.facebook.com/groups/{group_id}/permalink/{post_id}/")
+
+    # Find story URLs from React props
+    for m in re.finditer(r'"storyURL":"([^"]+)"', html):
+        url = m.group(1).replace('\\/', '/')
+        pid = extract_post_id(url)
+        if pid and pid not in seen_posts:
+            seen_posts.add(pid)
+            if url not in posts:
+                posts.append(url)
+
+    # Find actor posts via story data
+    if user_id:
+        for m in re.finditer(r'"actorID":"?' + re.escape(user_id) + r'"?', html):
+            for s in re.finditer(r'"storyID":"(\d+)"', html[max(0, m.start()-2000):m.end()+2000]):
+                sid = s.group(1)
+                if sid not in seen_posts:
+                    seen_posts.add(sid)
+                    posts.append(f"https://www.facebook.com/groups/{group_id}/permalink/{sid}/")
+
+    # Find comments by this user
+    if user_id:
+        for m in re.finditer(r'"authorID":"?' + re.escape(user_id) + r'"?', html):
+            for c in re.finditer(r'"commentID":"(\d+)"', html[max(0, m.start()-2000):m.end()+2000]):
+                cid = c.group(1)
+                if cid not in seen_comments:
+                    seen_comments.add(cid)
+                    body_m = re.search(r'"body":{"text":"([^"]+)"', html[c.start():c.end()+2000])
+                    text = body_m.group(1) if body_m else ''
+                    comments.append((cid, text))
+
+    return posts[:15], comments[:10]
+
+
+def lookup_username(name, token, cookies):
+    if token:
+        gu = retry_request(f'https://graph.facebook.com/v19.0/{name}', params={
+            'fields': 'id,name,link',
+            'access_token': token,
+        }, timeout=8, retries=2)
+        if gu and gu.status_code == 200:
+            ud = gu.json()
+            return ud.get('name'), ud.get('id')
+    found_name = None
+    found_uid = None
+    for url in [
+        f"https://www.facebook.com/{name}",
+        f"https://mbasic.facebook.com/{name}",
+    ]:
+        resp = retry_request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}, cookies=cookies, timeout=6, retries=1)
+        if not resp:
+            continue
+        body = resp.text
+        uid_m = re.search(r'"userID":"(\d+)"', body)
+        if uid_m and not found_uid:
+            found_uid = uid_m.group(1)
+        og = re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', body)
+        if og:
+            t = html.unescape(og.group(1))
+            if t and 'Facebook' not in t and len(t) < 80:
+                found_name = found_name or t
+                break
+        title_m = re.search(r'<title[^>]*>(.*?)</title>', body, re.DOTALL)
+        if title_m:
+            t = html.unescape(re.sub(r'\s+', ' ', title_m.group(1)).strip())
+            if t and 'Facebook' not in t and len(t) < 80:
+                found_name = found_name or t
+    return found_name, found_uid or name
+
+
+def lookup_user(user_id, token, cookies):
+    if token:
+        gu = retry_request(f'https://graph.facebook.com/v19.0/{user_id}', params={
+            'fields': 'name,id,link',
+            'access_token': token,
+        }, timeout=8, retries=2)
+        if gu and gu.status_code == 200:
+            ud = gu.json()
+            return ud.get('name'), ud.get('id')
+
+    name = None
+    for url in [
+        f"https://www.facebook.com/profile.php?id={user_id}",
+        f"https://www.facebook.com/{user_id}",
+        f"https://mbasic.facebook.com/profile.php?id={user_id}",
+    ]:
+        resp = retry_request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}, cookies=cookies, timeout=6, retries=1)
+        if not resp:
+            continue
+        html = resp.text
+        title_m = re.search(r'<title[^>]*>(.*?)</title>', html, re.DOTALL)
+        if title_m:
+            t = re.sub(r'\s+', ' ', title_m.group(1)).strip()
+            if t and 'Facebook' not in t and len(t) < 80:
+                name = re.sub(r'\s*\|.*$', '', t).strip()
+                break
+        extracted = extract_poster_name(html, None)
+        if extracted and 'Facebook' not in extracted and len(extracted) < 80:
+            name = extracted
+            break
+        og = re.search(r'<meta[^>]+property="og:title"[^>]+content="([^"]+)"', html)
+        if og:
+            ot = og.group(1)
+            if ot and 'Facebook' not in ot and len(ot) < 80:
+                name = ot
+                break
+
+    if not name or name == 'Unknown':
+        import tempfile
+        if cookies:
+            tmpf = tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False)
+            export = [{'name': c.name, 'value': c.value, 'domain': c.domain,
+                        'path': c.path or '/', 'secure': c.secure, 'httpOnly': False}
+                      for c in cookies]
+            json.dump(export, tmpf)
+            tmpf.close()
+            pw = playwright_fetch(f'https://www.facebook.com/profile.php?id={user_id}', cookies_path=tmpf.name, wait=4)
+            os.unlink(tmpf.name)
+        else:
+            pw = playwright_fetch(f'https://www.facebook.com/profile.php?id={user_id}', wait=4)
+        if pw and pw.get('title'):
+            t = re.sub(r'\s*\|.*$', '', pw.get('title', '')).strip()
+            if t and 'Facebook' not in t and len(t) < 80:
+                name = t
+
+    return name, None
+
+
+def check_group_membership(group_id, target, cookies):
+    uid = target if target.isdigit() else None
+    uname = None if target.isdigit() else target
+    if not uid:
+        _, uid = lookup_username(target, None, cookies)
+    if not uid:
+        return None, 'could not resolve target to a user ID'
+    url = f"https://www.facebook.com/groups/{group_id}/user/{uid}/"
+    resp = retry_request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}, cookies=cookies, timeout=6, retries=1)
+    if not resp:
+        return None, 'could not fetch group user page'
+    title_m = re.search(r'<title[^>]*>(.*?)</title>', resp.text, re.DOTALL)
+    if not title_m:
+        return None, 'no title found'
+    t = html.unescape(re.sub(r'\s+', ' ', title_m.group(1)).strip())
+    if t and t != 'Facebook' and 'Error' not in t and len(t) < 80:
+        return (uid, t), None
+    return None, 'user not found in group'
+
+
+def print_result(username, display_name, post_id, url, page_name=None, group_id=None, related_posts=None, related_comments=None, post_content=None, post_time=None, post_username=None, group_name=None, group_pic=None, profile_pic=None):
+    dn = wrap_rtl(display_name)
+    pc = wrap_rtl(post_content[:200] + ('...' if len(post_content) > 200 else '')) if post_content else None
+    pn = wrap_rtl(page_name)
+    gn = wrap_rtl(group_name)
+    print(f"  {GRN}✓ Post found!{RST}\n")
+    print(f"  {BLD}👤 Poster:{RST}   {CYN}{dn or 'Unknown'}{RST}")
+    if post_username:
+        print(f"  {BLD}🔗 Username:{RST}  {YLW}{post_username}{RST}")
+    elif username and username != (display_name or ''):
+        print(f"  {BLD}🔗 Username:{RST}  {YLW}{username}{RST}")
+    if post_time:
+        print(f"  {BLD}🕐 Time:{RST}     {DIM}{post_time}{RST}")
+    if pc:
+        print(f"  {BLD}📝 Content:{RST}  {CYN}{pc}{RST}")
+    if gn:
+        print(f"  {BLD}👥 Group:{RST}    {CYN}{gn}{RST}")
+    if group_id:
+        print(f"  {BLD}🆔 Group ID:{RST}  {DIM}{group_id}{RST}")
+    if profile_pic:
+        print(f"  {BLD}🖼 Profile Pic:{RST} {DIM}{profile_pic}{RST}")
+        print_pic(profile_pic)
+    if group_pic:
+        print(f"  {BLD}🖼 Group Pic:{RST} {DIM}{group_pic}{RST}")
+        print_pic(group_pic)
+    if pn:
+        print(f"  {BLD}📄 Page:{RST}     {CYN}{pn}{RST}")
+    if post_id:
+        print(f"  {BLD}🆔 Post ID:{RST}  {DIM}{post_id}{RST}")
+    if url:
+        print(f"  {BLD}🔗 URL:{RST}      {DIM}{url}{RST}")
+    if related_posts:
+        print(f"\n  {BLD}📌 Other posts by {wrap_rtl(display_name)} in group:{RST}")
+        for i, p in enumerate(related_posts, 1):
+            print(f"  {DIM}{i}.{RST} {DIM}{p}{RST}")
+    if related_comments:
+        print(f"\n  {BLD}💬 Comments by {wrap_rtl(display_name)} in group:{RST}")
+        for i, (cid, text) in enumerate(related_comments, 1):
+            snippet = (text[:60] + '...') if len(text) > 60 else text
+            print(f"  {DIM}{i}.{RST} {YLW}\"{wrap_rtl(snippet)}\"{RST}")
+    print()
+
+
+def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
+        print(f"  {LOGO}\n")
+        print(f"  {BLD}Usage:{RST}")
+        print(f"    {GRN}fbwho <post-url>{RST}    - Look up by post URL")
+        print(f"    {GRN}fbwho <post-id>{RST}     - Look up by post ID")
+        print(f"    {GRN}fbwho --user <id>{RST}   - Look up by user ID")
+        print(f"    {GRN}fbwho -u <id>{RST}       - Short form")
+        print(f"    {GRN}fbwho --name <username>{RST} - Look up by username")
+        print(f"    {GRN}fbwho -n <username>{RST}     - Short form")
+        print(f"    {GRN}fbwho -g <group> -f <target>{RST} - Find user in group")
+        print(f"    {GRN}fbwho --group <id> --find <id|username>{RST}")
+        print(f"\n  {BLD}Auth:{RST}")
+        print(f"    {DIM}FB_ACCESS_TOKEN=<token>{RST}          Graph API token")
+        print(f"    {DIM}FB_COOKIES=/path/to/cookies.json{RST}  Saved cookies")
+        print(f"    {DIM}FB_EMAIL=<email> FB_PASSWORD=<pass>{RST} Login (auto-saves to ~/.fbwho_cookies.json)")
+        print(f"\n  {BLD}Examples:{RST}")
+        print(f"    {DIM}fbwho https://www.facebook.com/zuck/posts/1011234567890{RST}")
+        print(f"    {DIM}fbwho 1011234567890{RST}")
+        print(f"    {DIM}fbwho --user 4{RST}")
+        print(f"    {DIM}fbwho -u 848294561045355{RST}")
+        print(f"    {DIM}fbwho --name zuck{RST}")
+        print(f"    {DIM}fbwho -g 707350140975831 -f 4469200603347892{RST}")
+        print()
+        return
+
+    is_user_lookup = False
+    is_name_lookup = False
+    is_group_find = False
+    scan_group_id = None
+    find_target = None
+
+    if len(sys.argv) >= 3 and sys.argv[1] in ('--user', '-u'):
+        is_user_lookup = True
+        user_id = sys.argv[2]
+    elif len(sys.argv) >= 3 and sys.argv[1] in ('--name', '-n'):
+        is_name_lookup = True
+        name_input = sys.argv[2]
+    elif len(sys.argv) >= 4 and sys.argv[1] in ('--group', '-g') and sys.argv[3] in ('--find', '-f'):
+        is_group_find = True
+        scan_group_id = sys.argv[2]
+        find_target = sys.argv[4]
+    else:
+        raw = sys.argv[1]
+        url, post_id_only = parse_post_id_from_input(raw)
+        if not url and not post_id_only:
+            print(f"\n  {RED}✗ Could not parse input.{RST}")
+            sys.exit(1)
+        post_id = extract_post_id(url) if url else post_id_only
+        username = extract_username(url) if url else None
+
+        # Auto-detect user profile URL: facebook.com/<username> or facebook.com/<numeric_id>
+        if url and not post_id and username:
+            if username.isdigit():
+                is_user_lookup = True
+                user_id = username
+            else:
+                is_name_lookup = True
+                name_input = username
+            url = None
+            post_id = None
+            username = None
+
+    if is_user_lookup or is_name_lookup:
+        url = None
+        post_id = None
+        username = None
+
+    hacker_loading()
+    print(f"\n  {LOGO}\n")
+
+    token = os.environ.get('FB_ACCESS_TOKEN')
+    cookie_path = os.environ.get('FB_COOKIES')
+    if not cookie_path:
+        default_cookie = os.path.expanduser('~/.fbwho_cookies.json')
+        if os.path.exists(default_cookie):
+            cookie_path = default_cookie
+    cookies = load_cookies(cookie_path) if cookie_path else None
+    if cookies and cookie_path:
+        fname = os.path.basename(cookie_path)
+        print(f"  {DIM}   ↳ Cookies: {GRN}{fname}{RST} {DIM}({len(cookies)} items){RST}")
+
+    if not cookies:
+        fb_email = os.environ.get('FB_EMAIL')
+        fb_pass = os.environ.get('FB_PASSWORD')
+        if fb_email and fb_pass:
+            print(f"  {DIM}   ↳ No cookies — attempting login with FB_EMAIL/FB_PASSWORD...{RST}")
+            cookies = playwright_login(fb_email, fb_pass)
+            if cookies:
+                cookie_path = None
+                cookie_file = os.path.expanduser('~/.fbwho_cookies.json')
+                try:
+                    with open(cookie_file, 'w') as f:
+                        export = []
+                        for c in cookies:
+                            export.append({
+                                'name': c.name, 'value': c.value,
+                                'domain': c.domain, 'path': c.path or '/',
+                                'secure': c.secure, 'httpOnly': False,
+                            })
+                        json.dump(export, f, indent=2)
+                    print(f"  {GRN}   ↳ Login successful — cookies saved to ~/.fbwho_cookies.json{RST}")
+                except Exception:
+                    print(f"  {GRN}   ↳ Login successful ({len(cookies)} cookies){RST}")
+            else:
+                print(f"  {YLW}   ↳ Login failed{RST}")
+
+    if token:
+        me = retry_request('https://graph.facebook.com/v19.0/me', params={
+            'fields': 'name,id', 'access_token': token,
+        }, timeout=8, retries=1)
+        if me and me.status_code == 200:
+            me_data = me.json()
+            if me_data.get('id'):
+                print(f"  {DIM}   ↳ Token: {GRN}{me_data.get('name','?')}{RST} {DIM}(ID: {me_data['id']}){RST}")
+        elif me:
+            print(f"  {YLW}   ↳ Token invalid or expired{RST}")
+            token = None
+        else:
+            print(f"  {YLW}   ↳ Token check failed{RST}")
+            token = None
+
+    # --- User / Username lookup mode ---
+    if is_user_lookup:
+        print(f"  {DIM}🔍 Looking up user...{RST}")
+        name, uname = lookup_user(user_id, token, cookies)
+        print(f"{GRN}✓ User found!{RST}\n")
+        print(f"  {BLD}👤 Name:{RST}      {CYN}{wrap_rtl(name or 'Unknown')}{RST}")
+        print(f"  {BLD}🆔 User ID:{RST}   {DIM}{user_id}{RST}")
+        if uname:
+            print(f"  {BLD}🔗 Username:{RST}  {YLW}{uname}{RST}")
+        if cookies and os.path.exists(PW_CHROME):
+            sys.stdout.write(f"  {DIM}   ↳ Trying Playwright for real pic...{RST}")
+            sys.stdout.flush()
+            pw = playwright_fetch(f"https://www.facebook.com/{user_id}", cookie_path)
+            if pw and pw.get('profile_pic'):
+                print(f"\r  {GRN}   ↳ Playwright found real profile pic{RST}")
+                profile_pic = pw['profile_pic']
+            else:
+                print(f"\r  {YLW}   ↳ Playwright failed, using default{RST}")
+                profile_pic = f"https://graph.facebook.com/{user_id}/picture?type=large"
+        else:
+            profile_pic = f"https://graph.facebook.com/{user_id}/picture?type=large"
+        print(f"  {BLD}🖼 Profile Pic:{RST} {DIM}{profile_pic}{RST}")
+        print_pic(profile_pic)
+        if not token and not cookies:
+            print(f"  {DIM}   ↳ Tip: Set FB_ACCESS_TOKEN or FB_COOKIES for more data{RST}")
+        print()
+        return
+
+    if is_name_lookup:
+        print(f"  {DIM}🔍 Looking up username...{RST}")
+        name, uid = lookup_username(name_input, token, cookies)
+        print(f"{GRN}✓ User found!{RST}\n")
+        print(f"  {BLD}👤 Name:{RST}      {CYN}{wrap_rtl(name or 'Unknown')}{RST}")
+        print(f"  {BLD}🔗 Username:{RST}  {YLW}{name_input}{RST}")
+        if uid and uid != name_input:
+            print(f"  {BLD}🆔 User ID:{RST}   {DIM}{uid}{RST}")
+        if uid:
+            if cookies and os.path.exists(PW_CHROME):
+                sys.stdout.write(f"  {DIM}   ↳ Trying Playwright for real pic...{RST}")
+                sys.stdout.flush()
+                pw = playwright_fetch(f"https://www.facebook.com/{uid}", cookie_path)
+                if pw and pw.get('profile_pic'):
+                    print(f"\r  {GRN}   ↳ Playwright found real profile pic{RST}")
+                    profile_pic = pw['profile_pic']
+                else:
+                    print(f"\r  {YLW}   ↳ Playwright failed, using default{RST}")
+                    profile_pic = f"https://graph.facebook.com/{uid}/picture?type=large"
+            else:
+                profile_pic = f"https://graph.facebook.com/{uid}/picture?type=large"
+            print(f"  {BLD}🖼 Profile Pic:{RST} {DIM}{profile_pic}{RST}")
+            print_pic(profile_pic)
+        if not token and not cookies:
+            print(f"  {DIM}   ↳ Tip: Set FB_ACCESS_TOKEN or FB_COOKIES for more data{RST}")
+        print()
+        return
+
+    if is_group_find:
+        print(f"  {DIM}🔍 Searching group {scan_group_id} for {find_target}...{RST}")
+        result, err = check_group_membership(scan_group_id, find_target, cookies)
+        if result:
+            uid, name = result
+            print(f"{GRN}✓ Target found in group!{RST}\n")
+            print(f"  {BLD}👤 Name:{RST}      {CYN}{wrap_rtl(name)}{RST}")
+            print(f"  {BLD}🆔 User ID:{RST}   {DIM}{uid}{RST}")
+            print(f"  {BLD}👥 Group ID:{RST}  {DIM}{scan_group_id}{RST}")
+            if cookies and os.path.exists(PW_CHROME):
+                sys.stdout.write(f"  {DIM}   ↳ Trying Playwright for real pic...{RST}")
+                sys.stdout.flush()
+                pw = playwright_fetch(f"https://www.facebook.com/{uid}", cookie_path)
+                if pw and pw.get('profile_pic'):
+                    print(f"\r  {GRN}   ↳ Playwright found real profile pic{RST}")
+                    profile_pic = pw['profile_pic']
+                else:
+                    print(f"\r  {YLW}   ↳ Playwright failed, using default{RST}")
+                    profile_pic = f"https://graph.facebook.com/{uid}/picture?type=large"
+            else:
+                profile_pic = f"https://graph.facebook.com/{uid}/picture?type=large"
+            print(f"  {BLD}🖼 Profile Pic:{RST} {DIM}{profile_pic}{RST}")
+            print_pic(profile_pic)
+        else:
+            print(f"  {YLW}✗ {err}{RST}")
+        print()
+        return
+
+    print(f"  {DIM}🔍 Looking up post...{RST}")
+
+    page_html = None
+    page_name = None
+    display_name = username
+    group_name = None
+
+    group_id = extract_group_id(url) if url else None
+
+    if token and (url or post_id):
+        pid = post_id
+        if url:
+            pid = extract_post_id(url) or post_id
+        if group_id and pid:
+            pid = f"{group_id}_{pid}"
+        elif not group_id and pid and url:
+            pid_from_url = extract_post_id(url)
+            if pid_from_url != pid and pid_from_url:
+                pid = pid_from_url
+        if pid:
+            api_versions = ['v19.0', 'v12.0', 'v3.0']
+            if group_id:
+                api_versions = ['v3.0', 'v12.0', 'v19.0']
+            for ver in api_versions:
+                sys.stdout.write(f"  {DIM}   ↳ API ({ver})...{RST}")
+                sys.stdout.flush()
+                gurl = f"https://graph.facebook.com/{ver}/{pid}"
+                gresp = retry_request(gurl, params={
+                    'fields': 'from{name,id,short_name},message',
+                    'access_token': token,
+                }, timeout=6, retries=1)
+                if gresp and gresp.status_code == 200:
+                    gdata = gresp.json()
+                    frm = gdata.get('from', {})
+                    if frm.get('name'):
+                        display_name = frm['name']
+                    if frm.get('short_name'):
+                        username = frm['short_name']
+                    elif frm.get('id') and not username:
+                        username = frm['id']
+                    print(f"\r  {GRN}   ↳ API ({ver}) success{RST}")
+                    break
+                elif gresp:
+                    err = gresp.json().get('error', {}).get('message', '')[:40]
+                    print(f"\r  {YLW}   ↳ API ({ver}): {err}{RST}")
+                else:
+                    print(f"\r  {YLW}   ↳ API ({ver}) error{RST}")
+
+    if url and not display_name:
+        print(f"  {DIM}   ↳ URL: {url}{RST}")
+        fetch_method = "cookies" if cookies else "direct"
+        sys.stdout.write(f"  {DIM}   ↳ Fetching page ({fetch_method})...{RST}")
+        sys.stdout.flush()
+        page_html = fetch_page(url, cookies=cookies)
+
+        if not page_html:
+            page_html = fetch_mbasic(url, cookies=cookies)
+
+        if page_html:
+            print(f"\r  {GRN}   ↳ Page fetched{RST}")
+            
+            # Extract poster info from embedded React props
+            if not display_name:
+                actor_m = re.search(r'"actorID":(\d+)', page_html)
+                title_m = re.search(r'"headerTitle":"([^"]+)"', page_html)
+                if actor_m:
+                    poster_uid = actor_m.group(1)
+                    print(f"  {DIM}   ↳ Poster ID: {poster_uid}{RST}")
+                    username = username or poster_uid
+                    if token:
+                        gu = retry_request(f'https://graph.facebook.com/v19.0/{poster_uid}', params={'fields': 'name,id', 'access_token': token}, timeout=5, retries=2)
+                        if gu:
+                            gu_data = gu.json()
+                            if gu_data.get('name'):
+                                display_name = gu_data['name']
+                                username = gu_data.get('id') or username
+                if title_m and not display_name:
+                    ht = decode_unicode_escapes(title_m.group(1).strip())
+                    if "'s Post" in ht or "'s Photo" in ht:
+                        display_name = ht.split("'")[0]
+            
+            if not display_name:
+                extracted = extract_poster_name(page_html, username)
+                if extracted:
+                    display_name = extracted
+            if not username:
+                found_user = find_username(page_html, post_id)
+                if found_user:
+                    username = found_user
+            if not display_name:
+                title_m = re.search(r'<title[^>]*>(.*?)</title>', page_html, re.DOTALL)
+                if title_m:
+                    raw = re.sub(r'\s+', ' ', title_m.group(1)).strip()[:60]
+                    if raw.lower() not in ('error', 'facebook'):
+                        page_name = raw
+        else:
+            print(f"\r  {YLW}   ↳ Page blocked (showing URL info){RST}")
+    elif not url:
+        print(f"  {DIM}   ↳ Post ID only — no URL to fetch{RST}")
+
+    if not display_name and username:
+        display_name = username
+
+    # --- Extract post content (from <title>, last segment after |) ---
+    post_content = None
+    post_time = None
+    post_username = None
+    group_pic = None
+    profile_pic = None
+    if page_html:
+        title_m = re.search(r'<title[^>]*>(.*?)</title>', page_html, re.DOTALL)
+        if title_m:
+            raw = decode_unicode_escapes(re.sub(r'\s+', ' ', title_m.group(1)).strip())
+            parts = [p.strip() for p in raw.split('|')]
+            if len(parts) >= 3:
+                post_content = html.unescape(parts[-1])
+                if not group_name:
+                    group_name = html.unescape(parts[0])
+            elif len(parts) == 2 and parts[0].lower() not in ('facebook', 'error'):
+                post_content = html.unescape(parts[-1])
+
+        # Extract timestamp
+        for m in re.finditer(r'data-utime\s*=\s*["\']?\s*(\d{10})\s*', page_html[:500000]):
+            ts = int(m.group(1))
+            if 1500000000 < ts < 2000000000:
+                from datetime import datetime
+                post_time = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+                break
+
+        # No CDN image URLs in static HTML — all JS-rendered.
+        # Fallback: use Graph API picture endpoint for profile pic
+        if poster_uid:
+            profile_pic = f"https://graph.facebook.com/{poster_uid}/picture?type=large"
+
+        # Extract username from profile links
+        for m in re.finditer(r'https?://(?:www\.)?facebook\.com/([a-zA-Z0-9._]+)(?:/|"|\?)', page_html[:200000]):
+            un = m.group(1)
+            if un not in ('share', 'groups', 'photo', 'video', 'story', 'hashtag', 'events', 'marketplace', 'watch', 'gaming', 'live', 'profile.php', 'me', 'messages', 'notifications', 'settings', 'friends') and not un.isdigit() and un.lower() not in ('posts', 'photos', 'videos'):
+                post_username = un
+                break
+
+    # --- Try Playwright for JS-rendered data (real profile pic, timestamps) ---
+    if url and cookies and os.path.exists(PW_CHROME) and page_html:
+        sys.stdout.write(f"  {DIM}   ↳ Trying Playwright for JS-rendered data...{RST}")
+        sys.stdout.flush()
+        pw = playwright_fetch(url, cookie_path, wait=5)
+        if pw:
+            pw_pic = pw.get('profile_pic')
+            if pw_pic and ('fbcdn' in pw_pic or 'scontent' in pw_pic):
+                profile_pic = pw_pic
+                print(f"\r  {GRN}   ↳ Playwright: got real profile pic{RST}")
+            else:
+                print(f"\r  {DIM}   ↳ Playwright: no better pic found{RST}")
+            pw_ts = pw.get('timestamps', [])
+            if pw_ts:
+                from datetime import datetime
+                ts = int(pw_ts[0])
+                if 1500000000 < ts < 2000000000:
+                    post_time = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+                    print(f"  {DIM}   ↳ Playwright: timestamp = {post_time}{RST}")
+        else:
+            print(f"\r  {YLW}   ↳ Playwright: failed{RST}")
+
+    # --- Fetch other posts/comments by same user in group ---
+    related_posts = []
+    related_comments = []
+    poster_uid = None
+    if group_id and url and page_html:
+        actor_m = re.search(r'"actorID":(\d+)', page_html)
+        if actor_m:
+            poster_uid = actor_m.group(1)
+    if group_id and (poster_uid or display_name) and cookies:
+        uid_for_search = poster_uid or ''
+        print(f"  {DIM}   ↳ Fetching {display_name or uid_for_search}'s group activity...{RST}")
+        activity_html = fetch_user_group_activity(group_id, uid_for_search, cookies)
+        if activity_html:
+            rp, rc = extract_user_activity(activity_html, group_id, uid_for_search)
+            related_posts = [p for p in rp if p != url][:5]
+            related_comments = [(c, t[:120]) for c, t in rc][:5]
+            if related_posts or related_comments:
+                print(f"  {GRN}   ↳ Found {len(related_posts)} posts, {len(related_comments)} comments{RST}")
+            else:
+                print(f"  {YLW}   ↳ No other activity found{RST}")
+
+    found_username = username or 'unknown'
+    found_display = display_name or 'Unknown'
+
+    if not token and not page_html and url:
+        print(f"  {DIM}   ↳ Tip: Set FB_ACCESS_TOKEN or FB_COOKIES for data{RST}")
+    elif cookies and not display_name:
+        print(f"  {YLW}   ↳ Page content is JS-rendered (poster hidden){RST}")
+
+    print_result(found_username, found_display, post_id, url, page_name, group_id,
+                 related_posts or None, related_comments or None, post_content, post_time, post_username, group_name, group_pic, profile_pic)
+
+
+if __name__ == '__main__':
+    main()
