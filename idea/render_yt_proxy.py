@@ -13,6 +13,11 @@ VIDEO_DIR = '/tmp/videos'
 COOKIE_FILE = '/tmp/cookies.txt'
 os.makedirs(VIDEO_DIR, exist_ok=True)
 
+
+def log(msg):
+    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
+
+
 # Auto-load cookies from env var (set COOKIES_B64 on Render once)
 if not os.path.exists(COOKIE_FILE):
     b64 = os.environ.get('COOKIES_B64', '')
@@ -42,9 +47,6 @@ def find_deno():
         if os.path.exists(dp):
             return dp
     return shutil.which('deno')
-
-def log(msg):
-    print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 def get_video_info(path):
     name = os.path.basename(path)
