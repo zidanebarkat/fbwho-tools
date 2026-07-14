@@ -71,7 +71,7 @@ def run_download(task_id, url, output_path):
         'yt-dlp',
         '--no-check-certificates',
         '--socket-timeout', '30',
-        '-f', 'best[height<=480]/bestvideo[height<=480]+bestaudio/best',
+        '-f', '18/22/best[height<=480][ext=mp4]/best[height<=480]/best',
         '--merge-output-format', 'mp4',
         '--remux-video', 'mp4',
         '--newline',
