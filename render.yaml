@@ -1,7 +1,0 @@
-services:
-  - type: web
-    name: yt-proxy
-    runtime: docker
-    envVars:
-      - key: PORT
-        value: "8000"
