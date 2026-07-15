@@ -34,6 +34,16 @@ if not os.path.exists(COOKIE_FILE):
 download_progress = {}
 progress_lock = threading.Lock()
 
+QUALITY_MAP = {
+    '360p':  'bestvideo[height<=360]+bestaudio/best[height<=360]/best',
+    '480p':  'bestvideo[height<=480]+bestaudio/best[height<=480]/best',
+    '720p':  'bestvideo[height<=720]+bestaudio/best[height<=720]/best',
+    '1080p': 'bestvideo[height<=1080]+bestaudio/best[height<=1080]/best',
+    '1440p': 'bestvideo[height<=1440]+bestaudio/best[height<=1440]/best',
+    '2160p': 'bestvideo[height<=2160]+bestaudio/best[height<=2160]/best',
+    'best':  'bestvideo+bestaudio/best',
+}
+
 DENO_PATHS = [
     os.path.expanduser('~/.deno/bin'),
     '/root/.deno/bin',
@@ -54,7 +64,7 @@ def get_video_info(path):
     return {'name': name, 'size_mb': round(size / 1024 / 1024, 1), 'url': f'/video/{name}'}
 
 
-def run_download(task_id, url, output_path):
+def run_download(task_id, url, output_path, quality='480p'):
     global download_progress
 
     env = os.environ.copy()
@@ -67,11 +77,14 @@ def run_download(task_id, url, output_path):
     else:
         log("WARNING: deno not found!")
 
+    fmt = QUALITY_MAP.get(quality, QUALITY_MAP['480p'])
+    log(f"Quality: {quality} → {fmt}")
+
     cmd = [
         'yt-dlp',
         '--no-check-certificates',
         '--socket-timeout', '30',
-        '-f', '18/22/best[height<=480][ext=mp4]/best[height<=480]/best',
+        '-f', fmt,
         '--merge-output-format', 'mp4',
         '--remux-video', 'mp4',
         '--newline',
@@ -255,9 +268,12 @@ def download():
     if os.path.exists(output_path):
         os.remove(output_path)
 
+    quality = data.get('quality', '480p')
+    if quality not in QUALITY_MAP:
+        quality = '480p'
     task_id = url_hash
-    log(f"Starting download: {url}")
-    thread = threading.Thread(target=run_download, args=(task_id, url, output_path), daemon=True)
+    log(f"Starting download: {url} @ {quality}")
+    thread = threading.Thread(target=run_download, args=(task_id, url, output_path, quality), daemon=True)
     thread.start()
     return jsonify({'ok': True, 'task_id': task_id})
 
@@ -432,6 +448,17 @@ input[type=text]{width:100%;padding:10px;background:var(--bg);border:1px solid v
 
 <div class="card">
 <h2>Download</h2>
+<div style="display:flex;gap:8px;margin-bottom:8px">
+<select id="qualitySelect" style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px">
+<option value="360p">360p (small, fast)</option>
+<option value="480p" selected>480p (default)</option>
+<option value="720p">720p HD</option>
+<option value="1080p">1080p Full HD</option>
+<option value="1440p">1440p 2K</option>
+<option value="2160p">2160p 4K</option>
+<option value="best">Best available</option>
+</select>
+</div>
 <input type="text" id="urlInput" placeholder="Paste YouTube URL here...">
 <button class="btn btn-g" id="btnDL" onclick="startDownload()">Download</button>
 <div class="pbar-wrap" id="pbarBg"><div class="pbar" id="pbar"></div><div class="ptxt" id="ptxt">0%</div></div>
@@ -490,7 +517,7 @@ function startDownload(){
   document.getElementById('pEta').textContent='--';
   document.getElementById('resBox').className='result';
 
-  fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})})
+  fetch('/api/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url,quality:document.getElementById('qualitySelect').value})})
   .then(function(r){return r.json();}).then(function(d){
     if(d.ok){curTask=d.task_id;save('curTask',curTask);btn.textContent='Downloading...';pollProg();}
     else{showErr(d.error||'Failed');}
