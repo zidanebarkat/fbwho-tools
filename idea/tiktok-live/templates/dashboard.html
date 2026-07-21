@@ -1,0 +1,347 @@
+
+<!DOCTYPE html><html><head>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>TikTok Live Studio Panel</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:linear-gradient(135deg,#0a0a0a,#1a0a2e);color:#e0e0e0;font-family:system-ui;min-height:100vh}
+.header{background:rgba(17,17,17,.95);padding:16px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222;backdrop-filter:blur(10px);position:sticky;top:0;z-index:100}
+.header h1{font-size:1.15rem;background:linear-gradient(135deg,#7c3aed,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header a{color:#888;text-decoration:none;font-size:.8rem}
+.mainer{display:flex;gap:24px;padding:24px;max-width:1400px;margin:0 auto}
+.col{flex:1;min-width:0}
+.section{background:rgba(17,17,17,.9);border-radius:14px;padding:22px;margin-bottom:20px;border:1px solid rgba(124,58,237,.2)}
+.section h2{font-size:1rem;margin-bottom:16px;color:#7c3aed;display:flex;align-items:center;gap:8px}
+label{font-size:.75rem;color:#888;display:block;margin-bottom:4px;margin-top:12px}
+input,select{width:100%;padding:10px 12px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.85rem;transition:border .2s}
+input:focus,select:focus{outline:none;border-color:#7c3aed}
+select{appearance:auto;cursor:pointer}
+.trow{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.titem{display:flex;align-items:center;gap:6px;background:rgba(26,26,46,.6);padding:7px 12px;border-radius:8px;border:1px solid #333}
+.titem input[type=checkbox]{width:16px;height:16px;accent-color:#7c3aed;cursor:pointer}
+.titem label{font-size:.75rem;margin:0;cursor:pointer;color:#ccc}
+.btn{padding:11px 22px;border:none;border-radius:8px;font-size:.82rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .2s}
+.btn-primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(124,58,237,.3)}
+.btn-start{background:linear-gradient(135deg,#22c55e,#16a34a);color:#000}.btn-start:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(34,197,94,.3)}
+.btn-stop{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff}.btn-stop:hover{transform:translateY(-1px)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-full{width:100%;justify-content:center;margin-top:16px}
+.btn-sm{font-size:.74rem;padding:5px 12px}
+.btn-ghost{background:rgba(255,255,255,.06);color:#ccc;border:1px solid #333}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.rbox{background:rgba(26,26,46,.6);border:1px solid #333;border-radius:10px;padding:16px;margin-top:10px;word-break:break-all;font-size:.82rem}
+.rbox .lbl{color:#888;font-size:.7rem;margin-top:8px}
+.rbox .lbl:first-of-type{margin-top:0}
+.rbox .val{color:#22c55e;font-weight:500;font-family:monospace}
+.rbox .url{color:#60a5fa}
+.logbox{background:rgba(13,13,13,.9);border:1px solid #222;border-radius:10px;padding:12px;height:250px;overflow-y:auto;font-family:monospace;font-size:.75rem;line-height:1.6}
+.logbox div{padding:3px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+.logbox .info{color:#60a5fa}.logbox .ok{color:#22c55e}.logbox .err{color:#ef4444}
+.sp{display:inline-block;width:16px;height:16px;border:2px solid #333;border-top-color:#7c3aed;border-radius:50%;animation:s .8s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.hidden{display:none}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.dot.g{background:#22c55e;box-shadow:0 0 6px rgba(34,197,94,.5)}
+.dot.r{background:#ef4444;box-shadow:0 0 6px rgba(239,68,68,.5)}
+.hitem{padding:8px;border-bottom:1px solid rgba(255,255,255,.04);cursor:pointer;transition:background .15s}
+.hitem:hover{background:rgba(124,58,237,.1)}
+.hitem .ht{color:#60a5fa}.hitem .hs{color:#666;font-size:.72rem}
+@media(max-width:800px){.mainer{flex-direction:column}}
+.help{font-size:.68rem;color:#666;margin-top:2px}
+.small{font-size:.72rem;color:#888}
+.grp{display:flex;gap:6px;flex-wrap:wrap}
+.auth-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.auth-tab{padding:8px 14px;border-radius:8px;border:1px solid #333;background:rgba(26,26,46,.4);color:#888;font-size:.78rem;cursor:pointer;font-weight:500;transition:all .2s}
+.auth-tab:hover{background:rgba(124,58,237,.15);color:#ccc}
+.auth-tab.active{background:rgba(124,58,237,.25);border-color:#7c3aed;color:#7c3aed;font-weight:600}
+.auth-panel{border:1px solid rgba(124,58,237,.15);border-radius:10px;padding:16px;background:rgba(26,26,46,.3)}
+.auth-panel.hidden{display:none}
+.auth-divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:#555;font-size:.72rem}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:#333}
+.or-label{color:#666;font-size:.68rem;text-align:center;margin:6px 0}
+</style></head>
+<body>
+<div class=header>
+<h1>TikTok Live Studio Panel</h1>
+<div style=display:flex;gap:14px;align-items:center>
+<span id=ls style=font-size:.76rem></span>
+<a href=/logout>Logout</a>
+</div>
+</div>
+<div class=mainer>
+<div class=col>
+<!-- Auth Section -->
+<div class=section id=authsect>
+<h2>Authentication</h2>
+<div class=auth-tabs>
+<div class="auth-tab active" onclick=switchAuth('qr') id=atab_qr>QR Login</div>
+<div class="auth-tab" onclick=switchAuth('web') id=atab_web>Web Login</div>
+<div class="auth-tab" onclick=switchAuth('sid') id=atab_sid>Session ID</div>
+<div class="auth-tab" onclick=switchAuth('cookie') id=atab_cookie>Load Cookies</div>
+</div>
+
+<!-- QR Login Panel -->
+<div class=auth-panel id=apanel_qr>
+<div id=qrp style=text-align:center>
+<button class="btn btn-primary" onclick=sq()>Get QR Code</button>
+<div class=or-label>Scan with TikTok mobile app</div>
+</div>
+<div id=qs class=hidden style=text-align:center>
+<div id=qt class=small style=color:#f59e0b;margin-bottom:4px></div>
+<img id=qi style=max-width:180px;border-radius:10px;border:2px solid #333>
+<div class=small style=word-break:break-all;margin-top:4px id=qu></div>
+</div>
+<div id=qp class=hidden style=text-align:center;padding:16px><div class=sp></div><div class=small style=margin-top:6px;color:#60a5fa>Waiting...</div></div>
+<div id=qd class=hidden style=text-align:center;padding:10px><span style=color:#22c55e>Logged in!</span><div class=small id=qci></div></div>
+</div>
+
+<!-- Web Login Panel -->
+<div class=auth-panel hidden id=apanel_web>
+<div style=text-align:center>
+<div class=small style=margin-bottom:12px;color:#888">Opens TikTok login page. Enter credentials there, then paste the redirect info below.</div>
+<button class="btn btn-primary" onclick=wl_open() id=wl_open_btn>Open TikTok Login</button>
+<div class=or-label>After logging in, paste the callback URL or redirect data:</div>
+<label style=margin-top:12px>Paste redirect URL or code</label>
+<input id=wl_redirect placeholder="Paste full redirect URL or code here..." style=margin-top:4px>
+<label>Or paste cookies JSON from browser after login</label>
+<textarea id=wl_cookies placeholder='{"sessionid":"...","sid_tt":"..."}' rows=3 style=margin-top:4px;width:100%;padding:10px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.82rem;font-family:monospace;resize:vertical"></textarea>
+<div style=display:flex;gap:8px;margin-top:12px>
+<button class="btn btn-primary" onclick=wl_complete() style=flex:1 id=wl_complete_btn>Complete Login</button>
+</div>
+<div id=wl_status class=small style=margin-top:8px></div>
+</div>
+</div>
+
+<!-- Session ID Panel -->
+<div class=auth-panel hidden id=apanel_sid>
+<div class=small style=margin-bottom:10px;color:#888">Paste your <code style="color:#7c3aed">sessionid</code> cookie value from TikTok.</div>
+<label>Session ID</label>
+<input id=sid_input placeholder="e.g. abc123def456..." style=margin-top:4px>
+<label>Device ID (optional, auto-generated if empty)</label>
+<input id=sid_did placeholder="Auto-generated">
+<div style=display:flex;gap:8px;margin-top:12px>
+<button class="btn btn-primary" onclick=sid_submit() style=flex:1 id=sid_submit_btn>Validate & Save</button>
+</div>
+<div class=help style=margin-top:8px">How to get sessionid: Open TikTok in browser, open DevTools (F12) &rarr; Application &rarr; Cookies &rarr; copy the value of <code>sessionid</code>.</div>
+<div id=sid_status class=small style=margin-top:8px></div>
+</div>
+
+<!-- Load Cookies Panel -->
+<div class=auth-panel hidden id=apanel_cookie>
+<div style=text-align:center>
+<button class="btn btn-primary" onclick=lc()>Load Cookies File</button>
+<div class=or-label>or</div>
+<button class="btn btn-ghost" onclick=pc()>Paste Cookies JSON</button>
+</div>
+</div>
+
+<!-- Cookie Status (shared) -->
+<div id=cs style=margin-top:12px class=hidden>
+<div style=display:flex;align-items:center;gap:6px><span class="dot g"></span>Cookies: <span id=cc>0</span></div>
+<button class="btn btn-sm btn-ghost" onclick=clc()>Clear</button>
+</div>
+</div>
+
+<!-- Config -->
+<div class=section>
+<h2>Stream Config</h2>
+<div style=display:grid;grid-template-columns:1fr 1fr;gap:0 14px>
+<div><label>Title</label><input id=ft value="Live Stream" placeholder=Title></div>
+<div><label>Description</label><input id=fd value="" placeholder=Optional></div>
+</div>
+<label>Topic Category (live_studio_hashtag)</label>
+<select id=ftpc>
+{% for id,name in topics.items() %}
+<option value="{{id}}"{% if id=="42"%}selected{% endif %}>{{name}} ({{id}})</option>
+{% endfor %}
+</select>
+<label>Game Tag</label>
+<div style=display:flex;gap:6px>
+<select id=fgm style=flex:1><option value=0>None</option>
+{% for id,name in game_tags.items() %}
+<option value="{{id}}">{{name}} ({{id}})</option>
+{% endfor %}</select>
+<button class="btn btn-ghost btn-sm" onclick=rg() title=Refresh>&#x21bb;</button>
+</div>
+<button class="btn btn-ghost btn-sm" onclick=rg() title=Refresh>&#x21bb;</button>
+</div>
+<label>Hashtags</label>
+<input id=ftag value="" placeholder="freefire,ewc2026,gaming">
+<label>Device ID</label>
+<input id=fdid value="" placeholder="Auto-generated">
+</div>
+<div class=trow>
+<div class=titem><input type=checkbox id=fc checked><label for=fc>Chat</label></div>
+<div class=titem><input type=checkbox id=fg checked><label for=fg>Gifts</label></div>
+<div class=titem><input type=checkbox id=fm><label for=fm>Multi-Stream</label></div>
+<div class=titem><input type=checkbox id=fr><label for=fr>Replay</label></div>
+<div class=titem><input type=checkbox id=fa><label for=fa>18+</label></div>
+<div class=titem><input type=checkbox id=ff><label for=ff>Commercial</label></div>
+</div>
+<button class="btn btn-start btn-full" onclick=cr()>Generate Stream Key</button>
+</div>
+<div class=col>
+<!-- Result -->
+<div class=section id=ri style=display:none>
+<h2>Stream Key</h2>
+<div class=rbox id=sr></div>
+<div class=grp style=margin-top:10px>
+<button class="btn btn-start" onclick=start24h()>Start 24h Stream</button>
+<button class="btn btn-stop" onclick=es()>End Stream</button>
+<button class="btn btn-ghost" onclick=ca()>Copy All</button>
+</div>
+<div id=stream24hStatus style=margin-top:8px;font-size:.78rem></div>
+</div>
+<!-- Log -->
+<div class=section>
+<h2>Log</h2>
+<div class=logbox id=lb><div style=color:#666>Ready</div></div>
+<div class=grp style=margin-top:6px><button class="btn btn-ghost btn-sm" onclick=cls()>Clear</button></div>
+</div>
+<!-- History -->
+<div class=section>
+<h2>History</h2>
+<div id=hb style=font-size:.76rem>
+{% for item in history %}
+<div class=hitem onclick="rh({{loop.index0}})">
+<div class=ht>{{item.title}} <span class=hs>{{item.stream_key}} &middot; {{item.created}}</span></div>
+</div>
+{% else %}
+<div style=color:#666;padding:6px>No history</div>
+{% endfor %}
+</div>
+</div>
+</div>
+</div>
+<script>
+let pi=null,lastCookies={},currentAuth='qr';
+
+function lg(m,t='info'){let b=document.getElementById('lb'),d=document.createElement('div');d.className=t;d.textContent='['+new Date().toLocaleTimeString()+'] '+m;b.appendChild(d);b.scrollTop=b.scrollHeight}
+function cls(){document.getElementById('lb').innerHTML='<div style=color:#666>Cleared</div>'}
+function ls(h,s){document.getElementById('ls').innerHTML=(h?'<span class="dot g"></span>'+s:'<span class="dot r"></span>Not logged in')}
+
+function switchAuth(method){
+currentAuth=method;
+['qr','web','sid','cookie'].forEach(m=>{
+document.getElementById('atab_'+m).classList.toggle('active',m===method);
+document.getElementById('apanel_'+m).classList.toggle('hidden',m!==method);
+});
+}
+
+// ---- QR Login ----
+function sq(){document.getElementById('qrp').hidden=1;document.getElementById('qs').classList.remove('hidden');document.getElementById('qp').classList.remove('hidden');document.getElementById('qd').classList.add('hidden');lg('Getting QR...','info')
+fetch('/api/qr/start',{method:'POST'}).then(r=>r.json()).then(d=>{if(!d.ok){lg(d.error,'err');return}
+document.getElementById('qp').classList.add('hidden');document.getElementById('qs').classList.remove('hidden');
+document.getElementById('qi').src=d.qrcode_base64?'data:image/png;base64,'+d.qrcode_base64:'';document.getElementById('qt').textContent=d.expires_sec+'s';
+lg('QR ready, scan with TikTok','ok')
+let st=Date.now(),dur=60000;pi=setInterval(()=>{
+let r=Math.max(0,60-((Date.now()-st)/1000|0));document.getElementById('qt').textContent=r+'s';
+if(r<=0){clearInterval(pi);lg('QR expired','err')}
+fetch('/api/qr/poll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:d.token,device_id:d.device_id,domain:d.domain})}).then(r=>r.json()).then(d2=>{if(d2.ok){clearInterval(pi);lg('Logged in!','ok');document.getElementById('qs').classList.add('hidden');document.getElementById('qd').classList.remove('hidden');document.getElementById('qci').textContent='sessionid: '+d2.sessionid.slice(0,20)+'...';lastCookies=d2.cookies;uc()}
+else if(d2.error!='expired'&&r>0)lg('Poll: '+d2.error,'err')
+}).catch(e=>{})
+},2000)}).catch(e=>{lg(e,'err')})}
+
+// ---- Web Login ----
+function wl_open(){
+lg('Opening TikTok login page...','info');
+let btn=document.getElementById('wl_open_btn');
+btn.disabled=true;btn.textContent='Opening...';
+fetch('/api/weblogin/start',{method:'POST'}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Open TikTok Login';
+if(!d.ok){lg(d.error,'err');return}
+lg('Login URL ready. Opening in new tab...','ok');
+let w=window.open(d.login_url,'_blank','width=500,height=700');
+if(!w||w.closed){lg('Popup blocked. Please allow popups and try again, or open the URL manually.','err');
+document.getElementById('wl_status').innerHTML='<span style=color:#ef4444>Popup blocked - allow popups or open TikTok login manually</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Open TikTok Login';lg('Error: '+e,'err')})}
+
+function wl_complete(){
+let redirect=document.getElementById('wl_redirect').value.trim();
+let cookiesJson=document.getElementById('wl_cookies').value.trim();
+let statusEl=document.getElementById('wl_status');
+let btn=document.getElementById('wl_complete_btn');
+if(cookiesJson){
+lg('Importing cookies from browser...','info');
+btn.disabled=true;btn.textContent='Validating...';
+fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:cookiesJson})}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Complete Login';
+if(d.ok){lg('Cookies imported!','ok');uc();statusEl.innerHTML='<span style=color:#22c55e>Login successful!</span>';}
+else{lg('Error: '+d.error,'err');statusEl.innerHTML='<span style=color:#ef4444>'+d.error+'</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Complete Login';lg('Error: '+e,'err')});
+return;
+}
+if(redirect){
+lg('Completing web login...','info');
+btn.disabled=true;btn.textContent='Validating...';
+fetch('/api/weblogin/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({redirect_data:redirect})}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Complete Login';
+if(d.ok){lg('Web login successful!','ok');lastCookies=d.cookies;uc();statusEl.innerHTML='<span style=color:#22c55e>Login successful! sessionid: '+d.sessionid.slice(0,20)+'...</span>';}
+else{lg('Error: '+d.error,'err');statusEl.innerHTML='<span style=color:#ef4444>'+d.error+'</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Complete Login';lg('Error: '+e,'err')});
+return;
+}
+statusEl.innerHTML='<span style=color:#ef4444>Please paste the redirect URL/code, or paste cookies JSON above.</span>';
+}
+
+// ---- Session ID ----
+function sid_submit(){
+let sid=document.getElementById('sid_input').value.trim();
+let did=document.getElementById('sid_did').value.trim();
+let statusEl=document.getElementById('sid_status');
+let btn=document.getElementById('sid_submit_btn');
+if(!sid){statusEl.innerHTML='<span style=color:#ef4444>Please enter a session ID</span>';return;}
+lg('Validating session ID...','info');
+btn.disabled=true;btn.textContent='Validating...';
+fetch('/api/sessionid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionid:sid,device_id:did||undefined})}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Validate & Save';
+if(d.ok){
+lg('Session ID valid! User: @'+d.username,'ok');
+statusEl.innerHTML='<span style=color:#22c55e>Logged in as @'+d.username+' ('+d.nickname+')</span>';
+uc();
+}else{lg('Session ID invalid: '+d.error,'err');statusEl.innerHTML='<span style=color:#ef4444>'+d.error+'</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Validate & Save';lg('Error: '+e,'err');statusEl.innerHTML='<span style=color:#ef4444>Network error</span>'})}
+
+// ---- Load/Paste Cookies ----
+function lc(){let e=document.createElement('input');e.type='file';e.accept='.json';e.onchange=async ev=>{let f=ev.target.files[0];if(!f)return;lg('Loading cookies file...','info');try{let t=await f.text();let d=JSON.parse(t);if(Array.isArray(d))d=d.reduce((a,c)=>{a[c.name]=c.value;return a},{});r=await fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:d})});rd=await r.json();if(rd.ok){lg('Cookies loaded','ok');uc()}else lg('Error: '+rd.error,'err')}catch(e2){lg('Parse error: '+e2,'err')}};e.click()}
+function pc(){let v=prompt('Paste cookies JSON (dict or array)');if(!v)return
+fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:v})}).then(r=>r.json()).then(d=>{if(d.ok){lg('Cookies loaded','ok');uc()}else lg('Error: '+d.error,'err')}).catch(e=>{})}
+
+// ---- Shared ----
+function uc(){fetch('/api/cookies').then(r=>r.json()).then(d=>{if(d.ok&&d.loaded){document.getElementById('cs').classList.remove('hidden');document.getElementById('cc').textContent=d.count;ls(1,'sessionid: '+d.sessionid.slice(0,20)+'...')}else{document.getElementById('cs').classList.add('hidden');ls(0)};lastCookies=d.cookies||lastCookies}).catch(e=>{})}
+function clc(){fetch('/api/cookies',{method:'DELETE'}).then(()=>{lg('Cookies cleared','ok');uc()}).catch(e=>{})}
+function rg(){lg('Refreshing game tags...','info');fetch('/api/games').then(r=>r.json()).then(d=>{if(d.ok){lg('Game tags updated','ok')
+let sel=document.getElementById('fgm'),cur=sel.value;sel.innerHTML='<option value=0>None</option>'
+for(let[id,name]of Object.entries(d.games||{})){let o=document.createElement('option');o.value=id;o.textContent=name+' ('+id+')';sel.appendChild(o)}
+sel.value=cur
+let tsel=document.getElementById('ftpc'),tcur=tsel.value;tsel.innerHTML=''
+for(let[id,name]of Object.entries(d.topics||{})){let o=document.createElement('option');o.value=id;o.textContent=name+' ('+id+')';tsel.appendChild(o)}
+tsel.value=tcur
+}else lg('Error: '+d.error,'err')}).catch(e=>{})}
+function rh(i){
+let h=JSON.parse('{{history|tojson|safe}}')[i];
+if(h){document.getElementById('ft').value=h.title||'';
+if(h.topic)document.getElementById('ftpc').value=h.topic;
+if(h.game)document.getElementById('fgm').value=h.game;
+lg('Restored: '+h.title,'info')}}
+function cr(){let opts={title:document.getElementById("ft").value||'Live Stream',description:document.getElementById("fd").value,topic_id:document.getElementById("ftpc").value,game_tag_id:document.getElementById("fgm").value,hashtags:document.getElementById("ftag").value,device_id:document.getElementById("fdid").value,chat:document.getElementById("fc").checked,gifts:document.getElementById("fg").checked,multi_stream:document.getElementById("fm").checked,gen_replay:document.getElementById("fr").checked,age_restricted:document.getElementById("fa").checked,commercial:document.getElementById("ff").checked}
+lg('Creating room: '+opts.title,'info')
+fetch('/api/room/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)}).then(r=>r.json()).then(d=>{if(d.ok){lg('Stream key generated!','ok')
+let h='<div class=lbl>Server URL</div><div class="val url">'+d.server_url+'</div><div class=lbl>Stream Key</div><div class=val>'+d.stream_key+'</div><div class=lbl>RTMP URL</div><div class=val>'+d.rtmp_url+'</div><div class=lbl>Share URL</div><div class=val>'+d.share_url+'</div><div class=lbl>Room ID: '+d.room_id+'</div>'
+document.getElementById('sr').innerHTML=h;document.getElementById('ri').style.display='';document.getElementById('ri').scrollIntoView({behavior:'smooth'})
+}else{lg('Failed: '+d.error,'err')}
+}).catch(e=>{lg('Error: '+e,'err')})}
+function es(){let rid=prompt('Room ID:');let sid=prompt('Stream ID (optional):');if(!rid)return
+lg('Ending stream...','info');fetch('/api/room/end',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room_id:rid,stream_id:sid})}).then(r=>r.json()).then(d=>{lg(d.ok?'Stream ended':'Failed: '+d.error,d.ok?'ok':'err')}).catch(e=>{})}
+function ca(){let el=document.getElementById('sr');let t=el.innerText;navigator.clipboard.writeText(t);lg('Copied','ok')}
+function start24h(){
+let sr=document.getElementById('sr'),el=sr.querySelectorAll('.val');
+let rtmp=el[2]?el[2].textContent:'',key=el[1]?el[1].textContent:'',share=el[3]?el[3].textContent:'',room=sr.innerText.match(/Room ID: (\S+)/);
+lg('Starting 24h stream...','info');
+fetch('/api/24h/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+server_url:el[0]?el[0].textContent:'',stream_key:key,rtmp_url:rtmp,share_url:share,
+room_id:room?room[1]:'',title:document.getElementById('ft').value||'Live Stream'
+})}).then(r=>r.json()).then(d=>{if(d.ok){lg('24h stream started!','ok');document.getElementById('stream24hStatus').innerHTML='<span style=color:#22c55e>Stream pushed. Auto-restart every 6h.</span>'}
+else{lg('Error: '+d.error,'err');document.getElementById('stream24hStatus').innerHTML='<span style=color:#ef4444>'+d.error+'</span>'}}).catch(e=>{lg('Error: '+e,'err')})}
+uc()
+</script></body></html>
