@@ -1046,7 +1046,14 @@ fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},
 // ---- Shared ----
 function uc(){fetch('/api/cookies').then(r=>r.json()).then(d=>{if(d.ok&&d.loaded){document.getElementById('cs').classList.remove('hidden');document.getElementById('cc').textContent=d.count;ls(1,'sessionid: '+d.sessionid.slice(0,20)+'...')}else{document.getElementById('cs').classList.add('hidden');ls(0)};lastCookies=d.cookies||lastCookies}).catch(e=>{})}
 function clc(){fetch('/api/cookies',{method:'DELETE'}).then(()=>{lg('Cookies cleared','ok');uc()}).catch(e=>{})}
-function rg(){lg('Refreshing game tags...','info');fetch('/api/games').then(r=>r.json()).then(d=>{if(d.ok){lg('Game tags updated','ok');location.reload()}else lg('Error: '+d.error,'err')}).catch(e=>{})}
+function rg(){lg('Refreshing game tags...','info');fetch('/api/games').then(r=>r.json()).then(d=>{if(d.ok){lg('Game tags updated','ok')
+let sel=document.getElementById('fgm'),cur=sel.value;sel.innerHTML='<option value=0>None</option>'
+for(let[id,name]of Object.entries(d.games||{})){let o=document.createElement('option');o.value=id;o.textContent=name+' ('+id+')';sel.appendChild(o)}
+sel.value=cur
+let tsel=document.getElementById('ftpc'),tcur=tsel.value;tsel.innerHTML=''
+for(let[id,name]of Object.entries(d.topics||{})){let o=document.createElement('option');o.value=id;o.textContent=name+' ('+id+')';tsel.appendChild(o)}
+tsel.value=tcur
+}else lg('Error: '+d.error,'err')}).catch(e=>{})}
 function rh(i){
 let h=JSON.parse('{{history|tojson|safe}}')[i];
 if(h){document.getElementById('ft').value=h.title||'';
@@ -1072,7 +1079,7 @@ server_url:el[0]?el[0].textContent:'',stream_key:key,rtmp_url:rtmp,share_url:sha
 room_id:room?room[1]:'',title:document.getElementById('ft').value||'Live Stream'
 })}).then(r=>r.json()).then(d=>{if(d.ok){lg('24h stream started!','ok');document.getElementById('stream24hStatus').innerHTML='<span style=color:#22c55e>Stream pushed. Auto-restart every 6h.</span>'}
 else{lg('Error: '+d.error,'err');document.getElementById('stream24hStatus').innerHTML='<span style=color:#ef4444>'+d.error+'</span>'}}).catch(e=>{lg('Error: '+e,'err')})}
-uc();rg()
+uc()
 </script></body></html>
 '''
 
