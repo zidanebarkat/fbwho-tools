@@ -131,12 +131,12 @@ def fetch_game_tags():
         r=s.get("https://webcast16-normal-c-alisg.tiktokv.com/webcast/room/hashtag/list/",timeout=15)
         d=r.json()
         data=d.get("data",{})
-        games={str(t["id"]):t.get("show_name","") for t in data.get("game_tag_list",[])}
-        topics={str(t["id"]):t.get("title","") for t in data.get("live_studio_hashtag",[])}
-        extras={str(t["id"]):t.get("title","") for t in data.get("hashtag",[]) if t.get("id")}
+        games=[{"id":str(t["id"]),"name":t.get("show_name","")} for t in data.get("game_tag_list",[])]
+        topics=[{"id":str(t["id"]),"name":t.get("title","")} for t in data.get("live_studio_hashtag",[])]
+        extras=[{"id":str(t["id"]),"name":t.get("title","")} for t in data.get("hashtag",[]) if t.get("id")]
         return {"games":games,"topics":topics,"extras":extras}
     except Exception:
-        return {"games":{},"topics":{},"extras":{}}
+        return {"games":[],"topics":[],"extras":[]}
 
 # ---------------------------------------------------------------------------
 # QR Login
@@ -668,7 +668,7 @@ def api_clear_cookies():
 def api_games():
     tags=fetch_game_tags()
     d=load_data(); d["game_tags_cache"]=tags; save_data(d)
-    return jsonify({"ok":True,"games":tags.get("games",{}),"topics":tags.get("topics",{}),"extras":tags.get("extras",{})})
+    return jsonify({"ok":True,"games":tags.get("games",[]),"topics":tags.get("topics",[]),"extras":tags.get("extras",[])})
 
 @app.route('/api/room/create',methods=['POST'])
 @api_login_required
