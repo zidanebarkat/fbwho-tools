@@ -1,9 +1,9 @@
-
-<!DOCTYPE html><html><head>
+<!DOCTYPE html>
+<html>
+<head>
 <meta name=viewport content="width=device-width,initial-scale=1">
 <title>TikTok Live Studio Panel</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
+<style>*{box-sizing:border-box;margin:0;padding:0}
 body{background:linear-gradient(135deg,#0a0a0a,#1a0a2e);color:#e0e0e0;font-family:system-ui;min-height:100vh}
 .header{background:rgba(17,17,17,.95);padding:16px 24px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #222;backdrop-filter:blur(10px);position:sticky;top:0;z-index:100}
 .header h1{font-size:1.15rem;background:linear-gradient(135deg,#7c3aed,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
@@ -58,13 +58,14 @@ select{appearance:auto;cursor:pointer}
 .auth-panel.hidden{display:none}
 .auth-divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:#555;font-size:.72rem}
 .auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:#333}
-.or-label{color:#666;font-size:.68rem;text-align:center;margin:6px 0}
-</style></head>
+.or-label{color:#666;font-size:.68rem;text-align:center;margin:6px 0}</style>
+</head>
 <body>
 <div class=header>
 <h1>TikTok Live Studio Panel</h1>
 <div style=display:flex;gap:14px;align-items:center>
-<span id=ls style=font-size:.76rem></span>
+<span id=ls style=font-size:.76rem>
+</span>
 <a href=/logout>Logout</a>
 </div>
 </div>
@@ -87,12 +88,22 @@ select{appearance:auto;cursor:pointer}
 <div class=or-label>Scan with TikTok mobile app</div>
 </div>
 <div id=qs class=hidden style=text-align:center>
-<div id=qt class=small style=color:#f59e0b;margin-bottom:4px></div>
-<img id=qi style=max-width:180px;border-radius:10px;border:2px solid #333>
-<div class=small style=word-break:break-all;margin-top:4px id=qu></div>
+<div id=qt class=small style=color:#f59e0b;margin-bottom:4px>
 </div>
-<div id=qp class=hidden style=text-align:center;padding:16px><div class=sp></div><div class=small style=margin-top:6px;color:#60a5fa>Waiting...</div></div>
-<div id=qd class=hidden style=text-align:center;padding:10px><span style=color:#22c55e>Logged in!</span><div class=small id=qci></div></div>
+<img id=qi style=max-width:180px;border-radius:10px;border:2px solid #333>
+<div class=small style=word-break:break-all;margin-top:4px id=qu>
+</div>
+</div>
+<div id=qp class=hidden style=text-align:center;padding:16px>
+<div class=sp>
+</div>
+<div class=small style=margin-top:6px;color:#60a5fa>Waiting...</div>
+</div>
+<div id=qd class=hidden style=text-align:center;padding:10px>
+<span style=color:#22c55e>Logged in!</span>
+<div class=small id=qci>
+</div>
+</div>
 </div>
 
 <!-- Web Login Panel -->
@@ -104,11 +115,13 @@ select{appearance:auto;cursor:pointer}
 <label style=margin-top:12px>Paste redirect URL or code</label>
 <input id=wl_redirect placeholder="Paste full redirect URL or code here..." style=margin-top:4px>
 <label>Or paste cookies JSON from browser after login</label>
-<textarea id=wl_cookies placeholder='{"sessionid":"...","sid_tt":"..."}' rows=3 style=margin-top:4px;width:100%;padding:10px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.82rem;font-family:monospace;resize:vertical"></textarea>
+<textarea id=wl_cookies placeholder='{"sessionid":"...","sid_tt":"..."}' rows=3 style=margin-top:4px;width:100%;padding:10px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.82rem;font-family:monospace;resize:vertical">
+</textarea>
 <div style=display:flex;gap:8px;margin-top:12px>
 <button class="btn btn-primary" onclick=wl_complete() style=flex:1 id=wl_complete_btn>Complete Login</button>
 </div>
-<div id=wl_status class=small style=margin-top:8px></div>
+<div id=wl_status class=small style=margin-top:8px>
+</div>
 </div>
 </div>
 
@@ -123,7 +136,8 @@ select{appearance:auto;cursor:pointer}
 <button class="btn btn-primary" onclick=sid_submit() style=flex:1 id=sid_submit_btn>Validate & Save</button>
 </div>
 <div class=help style=margin-top:8px">How to get sessionid: Open TikTok in browser, open DevTools (F12) &rarr; Application &rarr; Cookies &rarr; copy the value of <code>sessionid</code>.</div>
-<div id=sid_status class=small style=margin-top:8px></div>
+<div id=sid_status class=small style=margin-top:8px>
+</div>
 </div>
 
 <!-- Load Cookies Panel -->
@@ -137,7 +151,10 @@ select{appearance:auto;cursor:pointer}
 
 <!-- Cookie Status (shared) -->
 <div id=cs style=margin-top:12px class=hidden>
-<div style=display:flex;align-items:center;gap:6px><span class="dot g"></span>Cookies: <span id=cc>0</span></div>
+<div style=display:flex;align-items:center;gap:6px>
+<span class="dot g">
+</span>Cookies: <span id=cc>0</span>
+</div>
 <button class="btn btn-sm btn-ghost" onclick=clc()>Clear</button>
 </div>
 </div>
@@ -146,8 +163,14 @@ select{appearance:auto;cursor:pointer}
 <div class=section>
 <h2>Stream Config</h2>
 <div style=display:grid;grid-template-columns:1fr 1fr;gap:0 14px>
-<div><label>Title</label><input id=ft value="Live Stream" placeholder=Title></div>
-<div><label>Description</label><input id=fd value="" placeholder=Optional></div>
+<div>
+<label>Title</label>
+<input id=ft value="Live Stream" placeholder=Title>
+</div>
+<div>
+<label>Description</label>
+<input id=fd value="" placeholder=Optional>
+</div>
 </div>
 <label>Topic Category (live_studio_hashtag)</label>
 <select id=ftpc>
@@ -157,7 +180,8 @@ select{appearance:auto;cursor:pointer}
 </select>
 <label>Game Tag</label>
 <div style=display:flex;gap:6px>
-<select id=fgm style=flex:1><option value=0>None</option>
+<select id=fgm style=flex:1>
+<option value=0>None</option>
 {% for id,name in game_tags.items() %}
 <option value="{{id}}">{{name}} ({{id}})</option>
 {% endfor %}</select>
@@ -171,12 +195,30 @@ select{appearance:auto;cursor:pointer}
 <input id=fdid value="" placeholder="Auto-generated">
 </div>
 <div class=trow>
-<div class=titem><input type=checkbox id=fc checked><label for=fc>Chat</label></div>
-<div class=titem><input type=checkbox id=fg checked><label for=fg>Gifts</label></div>
-<div class=titem><input type=checkbox id=fm><label for=fm>Multi-Stream</label></div>
-<div class=titem><input type=checkbox id=fr><label for=fr>Replay</label></div>
-<div class=titem><input type=checkbox id=fa><label for=fa>18+</label></div>
-<div class=titem><input type=checkbox id=ff><label for=ff>Commercial</label></div>
+<div class=titem>
+<input type=checkbox id=fc checked>
+<label for=fc>Chat</label>
+</div>
+<div class=titem>
+<input type=checkbox id=fg checked>
+<label for=fg>Gifts</label>
+</div>
+<div class=titem>
+<input type=checkbox id=fm>
+<label for=fm>Multi-Stream</label>
+</div>
+<div class=titem>
+<input type=checkbox id=fr>
+<label for=fr>Replay</label>
+</div>
+<div class=titem>
+<input type=checkbox id=fa>
+<label for=fa>18+</label>
+</div>
+<div class=titem>
+<input type=checkbox id=ff>
+<label for=ff>Commercial</label>
+</div>
 </div>
 <button class="btn btn-start btn-full" onclick=cr()>Generate Stream Key</button>
 </div>
@@ -184,19 +226,25 @@ select{appearance:auto;cursor:pointer}
 <!-- Result -->
 <div class=section id=ri style=display:none>
 <h2>Stream Key</h2>
-<div class=rbox id=sr></div>
+<div class=rbox id=sr>
+</div>
 <div class=grp style=margin-top:10px>
 <button class="btn btn-start" onclick=start24h()>Start 24h Stream</button>
 <button class="btn btn-stop" onclick=es()>End Stream</button>
 <button class="btn btn-ghost" onclick=ca()>Copy All</button>
 </div>
-<div id=stream24hStatus style=margin-top:8px;font-size:.78rem></div>
+<div id=stream24hStatus style=margin-top:8px;font-size:.78rem>
+</div>
 </div>
 <!-- Log -->
 <div class=section>
 <h2>Log</h2>
-<div class=logbox id=lb><div style=color:#666>Ready</div></div>
-<div class=grp style=margin-top:6px><button class="btn btn-ghost btn-sm" onclick=cls()>Clear</button></div>
+<div class=logbox id=lb>
+<div style=color:#666>Ready</div>
+</div>
+<div class=grp style=margin-top:6px>
+<button class="btn btn-ghost btn-sm" onclick=cls()>Clear</button>
+</div>
 </div>
 <!-- History -->
 <div class=section>
@@ -204,7 +252,8 @@ select{appearance:auto;cursor:pointer}
 <div id=hb style=font-size:.76rem>
 {% for item in history %}
 <div class=hitem onclick="rh({{loop.index0}})">
-<div class=ht>{{item.title}} <span class=hs>{{item.stream_key}} &middot; {{item.created}}</span></div>
+<div class=ht>{{item.title}} <span class=hs>{{item.stream_key}} &middot; {{item.created}}</span>
+</div>
 </div>
 {% else %}
 <div style=color:#666;padding:6px>No history</div>
@@ -213,12 +262,13 @@ select{appearance:auto;cursor:pointer}
 </div>
 </div>
 </div>
-<script>
-let pi=null,lastCookies={},currentAuth='qr';
+<script>let pi=null,lastCookies={},currentAuth='qr';
 
 function lg(m,t='info'){let b=document.getElementById('lb'),d=document.createElement('div');d.className=t;d.textContent='['+new Date().toLocaleTimeString()+'] '+m;b.appendChild(d);b.scrollTop=b.scrollHeight}
 function cls(){document.getElementById('lb').innerHTML='<div style=color:#666>Cleared</div>'}
-function ls(h,s){document.getElementById('ls').innerHTML=(h?'<span class="dot g"></span>'+s:'<span class="dot r"></span>Not logged in')}
+function ls(h,s){document.getElementById('ls').innerHTML=(h?'<span class="dot g">
+</span>'+s:'<span class="dot r">
+</span>Not logged in')}
 
 function switchAuth(method){
 currentAuth=method;
@@ -327,7 +377,15 @@ lg('Restored: '+h.title,'info')}}
 function cr(){let opts={title:document.getElementById("ft").value||'Live Stream',description:document.getElementById("fd").value,topic_id:document.getElementById("ftpc").value,game_tag_id:document.getElementById("fgm").value,hashtags:document.getElementById("ftag").value,device_id:document.getElementById("fdid").value,chat:document.getElementById("fc").checked,gifts:document.getElementById("fg").checked,multi_stream:document.getElementById("fm").checked,gen_replay:document.getElementById("fr").checked,age_restricted:document.getElementById("fa").checked,commercial:document.getElementById("ff").checked}
 lg('Creating room: '+opts.title,'info')
 fetch('/api/room/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)}).then(r=>r.json()).then(d=>{if(d.ok){lg('Stream key generated!','ok')
-let h='<div class=lbl>Server URL</div><div class="val url">'+d.server_url+'</div><div class=lbl>Stream Key</div><div class=val>'+d.stream_key+'</div><div class=lbl>RTMP URL</div><div class=val>'+d.rtmp_url+'</div><div class=lbl>Share URL</div><div class=val>'+d.share_url+'</div><div class=lbl>Room ID: '+d.room_id+'</div>'
+let h='<div class=lbl>Server URL</div>
+<div class="val url">'+d.server_url+'</div>
+<div class=lbl>Stream Key</div>
+<div class=val>'+d.stream_key+'</div>
+<div class=lbl>RTMP URL</div>
+<div class=val>'+d.rtmp_url+'</div>
+<div class=lbl>Share URL</div>
+<div class=val>'+d.share_url+'</div>
+<div class=lbl>Room ID: '+d.room_id+'</div>'
 document.getElementById('sr').innerHTML=h;document.getElementById('ri').style.display='';document.getElementById('ri').scrollIntoView({behavior:'smooth'})
 }else{lg('Failed: '+d.error,'err')}
 }).catch(e=>{lg('Error: '+e,'err')})}
@@ -343,5 +401,6 @@ server_url:el[0]?el[0].textContent:'',stream_key:key,rtmp_url:rtmp,share_url:sha
 room_id:room?room[1]:'',title:document.getElementById('ft').value||'Live Stream'
 })}).then(r=>r.json()).then(d=>{if(d.ok){lg('24h stream started!','ok');document.getElementById('stream24hStatus').innerHTML='<span style=color:#22c55e>Stream pushed. Auto-restart every 6h.</span>'}
 else{lg('Error: '+d.error,'err');document.getElementById('stream24hStatus').innerHTML='<span style=color:#ef4444>'+d.error+'</span>'}}).catch(e=>{lg('Error: '+e,'err')})}
-uc()
-</script></body></html>
+uc()</script>
+</body>
+</html>
