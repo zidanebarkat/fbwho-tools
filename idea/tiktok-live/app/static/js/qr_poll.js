@@ -40,7 +40,7 @@ function pollQR() {
     if (d.ok) {
       document.getElementById('qrBox').innerHTML = '<div class=ok>Logged in! Redirecting...</div>';
       setTimeout(function() { window.location.href = '/dashboard' }, 800);
-    } else if (d.error === 'expired') {
+    } else if (d.error && d.error.indexOf('expired') !== -1) {
       qrData = null;
       document.getElementById('qrBox').innerHTML =
         '<div class=error>QR expired</div>' +

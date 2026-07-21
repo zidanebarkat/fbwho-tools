@@ -68,6 +68,10 @@ def api_qr_poll():
         )
         save_session(tok)
         return jsonify({"ok": True, "sessionid": cookies.get("sessionid", "")})
+    except TimeoutError:
+        return jsonify({"ok": False, "error": "expired"})
+    except RuntimeError as e:
+        return jsonify({"ok": False, "error": str(e)})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)})
 
