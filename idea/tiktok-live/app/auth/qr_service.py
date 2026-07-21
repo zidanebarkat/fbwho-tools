@@ -8,7 +8,7 @@ from curl_cffi import requests as curl_requests
 from config import Config
 
 # QR tokens expire after this many seconds (3 min)
-QR_TOKEN_TTL = 180
+QR_TOKEN_TTL = 300
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +236,7 @@ def qr_step2(token, device_id, domain):
                 flask_session['_qr_consumed'] = True
                 return cookies
             elif data.get("status_code") == 3:
-                return None
+                return "pending"
         except Exception:
             continue
     raise TimeoutError("QR not scanned")

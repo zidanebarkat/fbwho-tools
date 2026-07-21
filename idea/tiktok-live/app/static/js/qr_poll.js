@@ -45,6 +45,8 @@ function pollQR() {
       document.getElementById('qrBox').innerHTML =
         '<div class=error>QR expired</div>' +
         '<button class="btn btn-primary" onclick="startQR()" style="margin-top:10px">New QR Code</button>';
+    } else if (d.error === 'pending') {
+      setTimeout(pollQR, 3000);
     } else {
       setTimeout(pollQR, 3000);
     }

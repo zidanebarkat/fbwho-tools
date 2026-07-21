@@ -58,16 +58,16 @@ def api_qr_start():
 def api_qr_poll():
     body = request.get_json(force=True)
     try:
-        cookies = qr_step2(body.get("token", ""), body.get("device_id", ""), body.get("domain", ""))
-        if cookies is None:
-            return jsonify({"ok": False, "error": "expired"})
+        result = qr_step2(body.get("token", ""), body.get("device_id", ""), body.get("domain", ""))
+        if result == "pending":
+            return jsonify({"ok": False, "error": "pending"})
         tok = TikTokSession(
-            cookies=cookies,
-            device_id=cookies.get("device_id", gen_device_id()),
+            cookies=result,
+            device_id=result.get("device_id", gen_device_id()),
             is_active=True,
         )
         save_session(tok)
-        return jsonify({"ok": True, "sessionid": cookies.get("sessionid", "")})
+        return jsonify({"ok": True, "sessionid": result.get("sessionid", "")})
     except TimeoutError:
         return jsonify({"ok": False, "error": "expired"})
     except RuntimeError as e:
