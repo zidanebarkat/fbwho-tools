@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Login - TikTok Live Panel{% endblock %}
+{% block header %}{% endblock %}
+{% block body %}
+<div class=login-page>
+  <div class=login-box>
+    <h1>TikTok Live Panel</h1>
+    <p>Enter password to continue</p>
+    {% if error %}<div class=err>{{ error }}</div>{% endif %}
+    <form method=POST>
+      <input name=password type=password placeholder=Password autofocus>
+      <button type=submit class="btn btn-primary">Login</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,9 +1,5 @@
 flask>=3.0
-curl_cffi>=0.5.0
+curl_cffi>=0.7
 python-dotenv>=1.0
-gunicorn>=21.0
-pycryptodome>=3.20.0
-Pillow>=10.0
-qrcode>=7.0
-requests>=2.31
-gmssl>=3.2
+cryptography>=42.0
+qrcode[pil]>=7.0

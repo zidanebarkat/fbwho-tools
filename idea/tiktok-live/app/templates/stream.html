@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Go Live - TikTok Live Panel{% endblock %}
+{% block nav %}
+<a href="/dashboard">← Dashboard</a>
+{% endblock %}
+{% block body %}
+<div class=page>
+  <div class=card>
+    <h2>🐙 Go Live — GitHub Actions</h2>
+    <p class=hint>All fields are pre-filled from your setup. Edit before pushing.</p>
+
+    <form id=liveForm>
+      <label>RTMP URL (auto-filled from TikTok)</label>
+      <input class=input id=rtmpUrl readonly>
+
+      <label>Stream Key (auto-filled from TikTok)</label>
+      <input class=input id=streamKey readonly>
+
+      <label>Source URL <span class=req>*</span></label>
+      <input class=input id=sourceUrl value="{{ stream.source_url or '' }}" placeholder="https://youtube.com/watch?v=... or https://twitch.tv/...">
+      <div class=hint>YouTube, Twitch, or direct HLS .m3u8 URL</div>
+
+      <label>GitHub Personal Access Token <span class=req>*</span></label>
+      <input class=input id=githubPat type=password value="{{ stream.github_pat or '' }}" placeholder="ghp_xxxxxxxxxxxx">
+      <div class=hint>Required to trigger workflow. Saved for future use.</div>
+
+      <label>YouTube Cookies (base64, optional)</label>
+      <textarea class=input id=cookiesB64 rows=3 placeholder="Base64-encoded cookies.txt for age-restricted videos">{{ stream.cookies_b64 or '' }}</textarea>
+
+      <label>Preview Mode</label>
+      <select class=input id=previewMode>
+        <option value=false {% if stream.preview != 'true' %}selected{% endif %}>Stream live</option>
+        <option value=true {% if stream.preview == 'true' %}selected{% endif %}>Preview only (no streaming)</option>
+      </select>
+
+      <div class=row2>
+        <button type=button class="btn btn-ghost" onclick="saveOnly()">💾 Save Only</button>
+        <button type=button class="btn btn-start" id=goLiveBtn onclick="goLive()">🚀 Push to Stream</button>
+      </div>
+    </form>
+
+    <div id=statusBox style="display:none"></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/stream_form.js') }}"></script>
+{% endblock %}

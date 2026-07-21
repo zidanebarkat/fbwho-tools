@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - TikTok Live Panel{% endblock %}
+{% block nav %}
+<a href="/change-setup">⚙️ Change Setup</a>
+<a href="/logout">Logout</a>
+{% endblock %}
+{% block body %}
+<div class=page>
+  <div class=card>
+    <h2>📋 Stream Config</h2>
+    <div class=info-row><span class=k>Title</span><span class=v>{{ config.title }}</span></div>
+    <div class=info-row><span class=k>Game</span><span class=v>{{ config.game_name or 'Not set' }}</span></div>
+    <div class=info-row><span class=k>Topic</span><span class=v>{{ config.topic_name or 'None' }}</span></div>
+    {% if config.extras %}
+    <div class=info-row><span class=k>Tags</span><span class=v>{{ config.extra_names|join(', ') }}</span></div>
+    {% endif %}
+  </div>
+
+  <div class=card id=keyCard>
+    <h2>🔑 Stream Key</h2>
+    <p class=hint>Click "Get Key" to create a live room</p>
+    <div class=rbox id=keyBox style="display:none">
+      <div class=lbl>Server URL</div>
+      <div class=val id=keyServer></div>
+      <div class=lbl>Stream Key</div>
+      <div class=val id=keyStream></div>
+      <div class=lbl>RTMP URL</div>
+      <div class=val id=keyRtmp></div>
+      <div class=lbl>Room ID</div>
+      <div class=val id=keyRoom></div>
+    </div>
+    <div class=row3>
+      <button class="btn btn-golive" id=getKeyBtn onclick="getKey()">🔑 Get Key</button>
+    </div>
+    <div class=row3 id=keyActions style="display:none">
+      <button class="btn btn-sm btn-copy" onclick="copyKey()">📋 Copy Key</button>
+      <button class="btn btn-sm btn-copy" onclick="copyRTMP()">📋 Copy RTMP</button>
+      <button class="btn btn-sm btn-copy" onclick="copyAll()">📋 Copy All</button>
+    </div>
+  </div>
+
+  <div class=card id=goLiveCard style="display:none">
+    <h2>🚀 Go Live</h2>
+    <p class=hint>Push your stream to TikTok via GitHub Actions</p>
+    <a href="/go-live" class="btn btn-golive" style="text-decoration:none;text-align:center;display:block">🐙 Open Go Live Page →</a>
+  </div>
+
+  <div class=card>
+    <h2>📋 Log</h2>
+    <div class=logbox id=lb><div class=loginfo>Ready</div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

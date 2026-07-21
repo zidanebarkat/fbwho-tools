@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Setup - TikTok Live Panel{% endblock %}
+{% block header %}{% endblock %}
+{% block body %}
+<div class=page>
+  <h1>Stream Setup</h1>
+  <p class=sub>One-time setup — saved until you change it</p>
+  <div class=card>
+    <form method=POST>
+      <label>Stream Title</label>
+      <input name=title value="{{ config.title or 'My Live Stream' }}" placeholder="My Live Stream">
+
+      <label>Game / Category</label>
+      <select name=game_id id=gameSelect>
+        <option value="">Select game</option>
+        {% for g in games %}
+        <option value="{{ g.id }}" data-name="{{ g.name }}" {% if config.game_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+        {% endfor %}
+      </select>
+      <input type=hidden name=game_name id=gameName value="{{ config.game_name or '' }}">
+
+      <label>Topic</label>
+      <select name=topic_id id=topicSelect>
+        <option value="">None</option>
+        {% for t in topics %}
+        <option value="{{ t.id }}" data-name="{{ t.name }}" {% if config.topic_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+        {% endfor %}
+      </select>
+      <input type=hidden name=topic_name id=topicName value="{{ config.topic_name or '' }}">
+
+      <label>Extra Tags</label>
+      <div class=trow>
+        {% for e in extras %}
+        <div class=titem>
+          <input type=checkbox name=extras value="{{ e.id }}" id="ex_{{ e.id }}" {% if e.id in config.extras %}checked{% endif %}>
+          <input type=hidden name=extra_names value="{{ e.name }}">
+          <label for="ex_{{ e.id }}">{{ e.name }}</label>
+        </div>
+        {% endfor %}
+      </div>
+
+      <button type=submit class="btn btn-primary btn-full">Save & Continue</button>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('gameSelect').addEventListener('change',function(){
+  document.getElementById('gameName').value=this.options[this.selectedIndex].dataset.name||'';
+});
+document.getElementById('topicSelect').addEventListener('change',function(){
+  document.getElementById('topicName').value=this.options[this.selectedIndex].dataset.name||'';
+});
+</script>
+{% endblock %}

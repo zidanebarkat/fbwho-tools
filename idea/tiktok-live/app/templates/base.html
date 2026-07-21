@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name=viewport content="width=device-width,initial-scale=1">
+  <title>{% block title %}TikTok Live Panel{% endblock %}</title>
+  <link rel=stylesheet href="{{ url_for('static', filename='css/style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% block header %}
+  <div class=header>
+    <h1><a href="/" style="text-decoration:none;color:inherit">TikTok Live Panel</a></h1>
+    <nav>
+      {% block nav %}{% endblock %}
+    </nav>
+  </div>
+  {% endblock %}
+
+  {% block body %}{% endblock %}
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

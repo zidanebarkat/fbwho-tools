@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}QR Login - TikTok Live Panel{% endblock %}
+{% block header %}{% endblock %}
+{% block body %}
+<div class=page>
+  <h1>TikTok Login</h1>
+  <p class=sub>Scan QR code with TikTok app — one-time per device</p>
+  <div class=card>
+    <div class=tabs>
+      <button class="tab active" data-tab=qr onclick="showTab('qr')">QR Scan</button>
+      <button class=tab data-tab=session onclick="showTab('session')">Session ID</button>
+      <button class=tab data-tab=cookie onclick="showTab('cookie')">Cookie File</button>
+    </div>
+
+    <div id=tQR class="panel active">
+      <div class=qr-box id=qrBox>
+        <div class=status><span class=spinner></span> Generating QR code...</div>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="pollQR()">Check Status</button>
+    </div>
+
+    <div id=tSession class=panel>
+      <label>Paste your session ID cookie</label>
+      <textarea id=sessionInput rows=4 placeholder="sessionid=xxx; sessionid_ss=yyy; ..."></textarea>
+      <button class="btn btn-primary btn-full" onclick="submitSession()">Login</button>
+    </div>
+
+    <div id=tCookie class=panel>
+      <label>Upload cookie JSON file</label>
+      <input type=file id=cookieFile accept=.json>
+      <button class="btn btn-primary btn-full" onclick="uploadCookie()">Upload & Login</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/qr_poll.js') }}"></script>
+{% endblock %}
