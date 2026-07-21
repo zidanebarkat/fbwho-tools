@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: tiktok-live-studio
+    env: docker
+    repo: https://github.com/zidanebarkat/fbwho-tools
+    dockerfilePath: ./idea/tiktok-live/Dockerfile
+    envVars:
+      - key: PANEL_PASSWORD
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_DEBUG
+        value: "0"
+      - key: PORT
+        value: "5000"

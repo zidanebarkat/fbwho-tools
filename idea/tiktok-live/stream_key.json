@@ -1,0 +1,14 @@
+{
+  "rtmp_server": "rtmp://push-rtmp-l11-sg01.tiktokcdn.com/game",
+  "stream_key": "stream-1560912805357682792?amun=true&c=DZ&dsnp=1&expire=1785181642&l_region=Singapore-Central&offsetTime=1784576842766&sign=cb980131e266e6302b3c89fd888227b3&th_region=sg",
+  "rtmp_url": "rtmp://push-rtmp-l11-sg01.tiktokcdn.com/game/stream-1560912805357682792?amun=true&c=DZ&dsnp=1&expire=1785181642&l_region=Singapore-Central&offsetTime=1784576842766&sign=cb980131e266e6302b3c89fd888227b3&th_region=sg",
+  "share_url": "https://m.tiktok.com/share/live/7664699083533830932/?language=en&u_code=dmi4a1fc6hfg20",
+  "room_id": "",
+  "title": "\u0641\u0631\u064a \u0641\u0627\u064a\u0631 \u062a\u062d\u062f\u064a\u0627\u062a \u0648 \u0647\u062f\u064a\u0627 - Free Fire Live",
+  "topic_id": "5",
+  "topic_name": "Gaming",
+  "game_tag_id": "102",
+  "chat_auth": true,
+  "gift_auth": true,
+  "age_restricted": false
+}
