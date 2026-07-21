@@ -8,15 +8,7 @@ import base64, hashlib, json, os, secrets, string, sys, time, urllib.parse
 from functools import wraps
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-METASEC_PATH = REPO_ROOT / "tiktok-api" / "Mobile"
-SIGNERS_PATH = REPO_ROOT / "TikTokStreamKeyGenerator"
-for p in [SIGNERS_PATH, METASEC_PATH]:
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
-os.chdir(str(METASEC_PATH))
-
-from metasec import Metasec
+from Mobile.metasec import Metasec
 from curl_cffi import requests
 from dotenv import load_dotenv
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
