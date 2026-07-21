@@ -1,6 +1,6 @@
 """Authentication routes — login, QR, session ID, cookie upload, logout."""
 import json
-from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, session, redirect, url_for, current_app
 
 from config import Config
 from app.models.session import TikTokSession, load_session, save_session, clear_session
@@ -8,13 +8,15 @@ from app.auth.qr_service import (
     login_required, api_auth, qr_step1, qr_step2,
     validate_session_id, gen_device_id,
 )
+from app.security import csrf_protect
 
 auth_bp = Blueprint('auth', __name__)
 
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
+@csrf_protect
 def login():
-    if request.method == 'POST' and request.form.get('password') == Config.PANEL_PASSWORD:
+    if request.method == 'POST' and request.form.get('password') == current_app.config['PANEL_PASSWORD']:
         session['authenticated'] = True
         return redirect(url_for('root'))
     error = 'Wrong password' if request.method == 'POST' else None
@@ -41,6 +43,7 @@ def qr_page():
 # ---------------------------------------------------------------------------
 @auth_bp.route('/api/qr/start', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_qr_start():
     try:
         qr = qr_step1()
@@ -51,6 +54,7 @@ def api_qr_start():
 
 @auth_bp.route('/api/qr/poll', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_qr_poll():
     body = request.get_json(force=True)
     try:
@@ -70,6 +74,7 @@ def api_qr_poll():
 
 @auth_bp.route('/api/sessionid', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_sessionid():
     body = request.get_json(force=True)
     sid = (body.get("sessionid") or "").strip()
@@ -92,6 +97,7 @@ def api_sessionid():
 
 @auth_bp.route('/api/cookies', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_set_cookies():
     body = request.get_json(force=True)
     raw = body.get("cookies", "")
@@ -113,6 +119,7 @@ def api_health():
 
 @auth_bp.route('/api/cookies', methods=['DELETE'])
 @api_auth
+@csrf_protect
 def api_clear_cookies():
     clear_session()
     return jsonify({"ok": True})

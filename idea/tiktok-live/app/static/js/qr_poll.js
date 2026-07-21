@@ -1,5 +1,9 @@
 /* QR Polling — handles QR generation, polling, session ID, cookie upload */
 var qrData = null;
+function csrfHeaders() {
+  var t = document.querySelector('meta[name="csrf-token"]');
+  return t ? {'X-CSRF-Token': t.getAttribute('content')} : {};
+}
 
 function showTab(t) {
   document.querySelectorAll('.tab').forEach(function(e) { e.classList.remove('active') });
@@ -11,7 +15,7 @@ function showTab(t) {
 
 function startQR() {
   document.getElementById('qrBox').innerHTML = '<div class=status><span class=spinner></span> Generating QR code...</div>';
-  fetch('/api/qr/start', {method: 'POST'}).then(function(r) { return r.json() }).then(function(d) {
+  fetch('/api/qr/start', {method: 'POST', headers: csrfHeaders()}).then(function(r) { return r.json() }).then(function(d) {
     if (d.ok) {
       qrData = d;
       document.getElementById('qrBox').innerHTML =
@@ -30,7 +34,7 @@ function pollQR() {
   if (!qrData) return;
   fetch('/api/qr/poll', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: Object.assign({'Content-Type': 'application/json'}, csrfHeaders()),
     body: JSON.stringify({token: qrData.token, device_id: qrData.device_id, domain: qrData.domain})
   }).then(function(r) { return r.json() }).then(function(d) {
     if (d.ok) {
@@ -57,7 +61,7 @@ function submitSession() {
   });
   fetch('/api/sessionid', {
     method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    headers: Object.assign({'Content-Type': 'application/json'}, csrfHeaders()),
     body: JSON.stringify({sessionid: cookies.sessionid || v})
   }).then(function(r) { return r.json() }).then(function(d) {
     if (d.ok) {
@@ -76,7 +80,7 @@ function uploadCookie() {
   r.onload = function() {
     fetch('/api/cookies', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: Object.assign({'Content-Type': 'application/json'}, csrfHeaders()),
       body: JSON.stringify({cookies: r.result})
     }).then(function(r) { return r.json() }).then(function(d) {
       if (d.ok) {

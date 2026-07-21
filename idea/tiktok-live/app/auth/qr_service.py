@@ -7,6 +7,9 @@ from Mobile.metasec import Metasec
 from curl_cffi import requests as curl_requests
 from config import Config
 
+# QR tokens expire after this many seconds (3 min)
+QR_TOKEN_TTL = 180
+
 
 # ---------------------------------------------------------------------------
 # Passport SDK helpers
@@ -179,6 +182,9 @@ def qr_step1():
                 b64 = base64.b64encode(buf.getvalue()).decode()
             except Exception:
                 b64 = ""
+            # Stamp creation time + consumed flag on session
+            flask_session['_qr_created'] = time.time()
+            flask_session['_qr_consumed'] = False
             return {
                 "token": tok,
                 "qrcode_url": qurl,
@@ -192,6 +198,12 @@ def qr_step1():
 
 
 def qr_step2(token, device_id, domain):
+    # --- security: reject expired or already-used tokens ---
+    created = flask_session.get('_qr_created', 0)
+    if time.time() - created > QR_TOKEN_TTL:
+        raise TimeoutError("QR token expired")
+    if flask_session.get('_qr_consumed'):
+        raise RuntimeError("QR token already used")
     session = make_session()
     hosts = [domain] + api_hosts()
     for host in hosts:
@@ -221,6 +233,7 @@ def qr_step2(token, device_id, domain):
                 cookies = {}
                 for c in session.cookies.jar:
                     cookies[c.name] = c.value
+                flask_session['_qr_consumed'] = True
                 return cookies
             elif data.get("status_code") == 3:
                 return None

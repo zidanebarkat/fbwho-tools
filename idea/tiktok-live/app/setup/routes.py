@@ -4,6 +4,7 @@ from flask import Blueprint, render_template, request, jsonify, redirect, url_fo
 from app.auth.qr_service import login_required, api_auth
 from app.models.channel_config import ChannelConfig, load_channel_config, save_channel_config
 from app.auth.qr_service import make_session
+from app.security import csrf_protect
 from config import Config
 
 setup_bp = Blueprint('setup', __name__)
@@ -26,6 +27,7 @@ def _fetch_game_tags():
 
 @setup_bp.route('/setup', methods=['GET', 'POST'])
 @login_required
+@csrf_protect
 def setup_page():
     if request.method == 'POST':
         config = ChannelConfig(

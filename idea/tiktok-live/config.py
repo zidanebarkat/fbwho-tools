@@ -16,6 +16,12 @@ class Config:
     ENCRYPTION_KEY = os.environ.get('ENCRYPTION_KEY', '')
     PANEL_PASSWORD = os.environ.get('PANEL_PASSWORD', 'admin')
 
+    # Session / cookie hardening
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = 'Lax'
+    # Secure only when behind HTTPS (Render, Docker behind TLS proxy)
+    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', '').lower() in ('1', 'true', 'yes')
+
     # TikTok
     PASSPORT_APP_KEY = '884c28a44b61b78f9d837fc8b0967178'
     PASSPORT_WEB_SDK_VERSION = '2.1.9'

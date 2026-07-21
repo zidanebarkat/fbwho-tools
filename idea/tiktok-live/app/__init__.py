@@ -27,6 +27,10 @@ def create_app(config_class=Config):
         # Validate the key is proper Fernet
         Fernet(app.config['ENCRYPTION_KEY'].encode() if isinstance(app.config['ENCRYPTION_KEY'], str) else app.config['ENCRYPTION_KEY'])
 
+    # Make CSRF token available in all templates
+    from app.security import generate_csrf_token
+    app.jinja_env.globals['csrf_token'] = generate_csrf_token
+
     # Register blueprints
     from app.auth.routes import auth_bp
     from app.setup.routes import setup_bp

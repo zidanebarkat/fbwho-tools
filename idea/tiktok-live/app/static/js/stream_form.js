@@ -1,10 +1,14 @@
 /* Stream form — go-live page logic */
 var keyData = null;
+function csrfHeaders() {
+  var t = document.querySelector('meta[name="csrf-token"]');
+  return t ? {'X-CSRF-Token': t.getAttribute('content')} : {};
+}
 
 function $(s) { return document.querySelector(s) }
 
 function getKey() {
-  return fetch('/api/room/create', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({})})
+  return fetch('/api/room/create', {method: 'POST', headers: Object.assign({'Content-Type': 'application/json'}, csrfHeaders()), body: JSON.stringify({})})
     .then(function(r) { return r.json() })
     .then(function(d) {
       if (d.ok) {
@@ -23,7 +27,7 @@ function saveSettings() {
     cookies_b64: $('#cookiesB64').value,
     preview: $('#previewMode').value
   };
-  return fetch('/api/stream/save', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)})
+  return fetch('/api/stream/save', {method: 'POST', headers: Object.assign({'Content-Type': 'application/json'}, csrfHeaders()), body: JSON.stringify(data)})
     .then(function(r) { return r.json() });
 }
 
@@ -60,7 +64,7 @@ function goLive() {
         cookies_b64: $('#cookiesB64').value,
         preview: $('#previewMode').value
       };
-      return fetch('/api/golive', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+      return fetch('/api/golive', {method: 'POST', headers: Object.assign({'Content-Type': 'application/json'}, csrfHeaders()), body: JSON.stringify(body)});
     }).then(function(r) { return r.json() }).then(function(d) {
       if (d.ok) {
         showStatus('Workflow triggered! <a href="https://github.com/zidanebarkat/8dca7ff25e47b8cc0e104b9f-tt/actions" target="_blank" style="color:#60a5fa">View runs</a>', 'ok');

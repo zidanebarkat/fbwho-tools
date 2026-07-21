@@ -9,6 +9,7 @@ from app.models.session import TikTokSession, load_session
 from app.storage.secure_store import SecureStore
 from app.stream.stream_key import create_room, end_room
 from app.stream.github_dispatch import trigger_workflow, check_workflow_status, cancel_workflow
+from app.security import csrf_protect
 from flask import current_app
 from config import Config
 
@@ -62,6 +63,7 @@ def go_live():
 # ---------------------------------------------------------------------------
 @stream_bp.route('/api/room/create', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_create():
     config = load_channel_config()
     tok = load_session()
@@ -98,6 +100,7 @@ def api_create():
 
 @stream_bp.route('/api/room/end', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_end():
     body = request.get_json(force=True)
     tok = load_session()
@@ -112,6 +115,7 @@ def api_end():
 
 @stream_bp.route('/api/stream/save', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_stream_save():
     body = request.get_json(force=True)
     store = _get_store()
@@ -130,6 +134,7 @@ def api_stream_get():
 
 @stream_bp.route('/api/golive', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_golive():
     body = request.get_json(force=True)
     config = load_channel_config()
@@ -180,6 +185,7 @@ def api_workflow_status():
 
 @stream_bp.route('/api/workflow/cancel', methods=['POST'])
 @api_auth
+@csrf_protect
 def api_workflow_cancel():
     ok, err = cancel_workflow()
     return jsonify({"ok": ok, "error": err})

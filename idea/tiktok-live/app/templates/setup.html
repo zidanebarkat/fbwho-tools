@@ -7,6 +7,7 @@
   <p class=sub>One-time setup — saved until you change it</p>
   <div class=card>
     <form method=POST>
+      <input type=hidden name=_csrf_token value="{{ csrf_token() }}">
       <label>Stream Title</label>
       <input name=title value="{{ config.title or 'My Live Stream' }}" placeholder="My Live Stream">
 

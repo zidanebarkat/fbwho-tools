@@ -16,6 +16,15 @@ def client():
         yield c
 
 
+def _auth_headers(client):
+    """Make a GET that renders a template (triggering csrf_token()) then extract it."""
+    client.get('/api/status')
+    client.get('/login')
+    with client.session_transaction() as sess:
+        token = sess.get('_csrf_token', '')
+    return {'X-CSRF-Token': token, 'Content-Type': 'application/json'}
+
+
 def test_dashboard_requires_setup(client):
     r = client.get('/dashboard', follow_redirects=False)
     assert r.status_code == 302
@@ -24,6 +33,7 @@ def test_dashboard_requires_setup(client):
 
 def test_dashboard_requires_tiktok(client):
     save_channel_config(ChannelConfig(title='Test', is_setup_done=True))
+    save_session(TikTokSession(cookies={}, device_id='', is_active=False))
     r = client.get('/dashboard', follow_redirects=False)
     assert r.status_code == 302
     assert '/qr' in r.headers['Location']
@@ -54,7 +64,7 @@ def test_api_status(client):
 
 
 def test_api_stream_save(client):
-    r = client.post('/api/stream/save', json={'source_url': 'https://example.com', 'preview': 'false'})
+    r = client.post('/api/stream/save', json={'source_url': 'https://example.com', 'preview': 'false'}, headers=_auth_headers(client))
     assert r.status_code == 200
     assert r.get_json()['ok'] is True
 
@@ -63,3 +73,8 @@ def test_api_stream_get(client):
     r = client.get('/api/stream')
     assert r.status_code == 200
     assert r.get_json()['ok'] is True
+
+
+def test_api_stream_save_no_csrf_rejected(client):
+    r = client.post('/api/stream/save', json={'source_url': 'https://example.com'})
+    assert r.status_code == 403

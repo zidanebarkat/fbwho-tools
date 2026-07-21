@@ -1,4 +1,5 @@
 """Tests for setup routes."""
+import re
 import pytest
 from app import create_app
 from app.models.channel_config import save_channel_config, ChannelConfig
@@ -15,6 +16,17 @@ def client():
         yield c
 
 
+def _csrf(client, path='/setup'):
+    r = client.get(path)
+    m = re.search(r'name=_csrf_token value="([^"]+)"', r.data.decode())
+    return m.group(1) if m else None
+
+
+def _api_csrf(client):
+    with client.session_transaction() as sess:
+        return sess.get('_csrf_token', '')
+
+
 def test_setup_page_loads(client):
     r = client.get('/setup')
     assert r.status_code == 200
@@ -22,12 +34,14 @@ def test_setup_page_loads(client):
 
 
 def test_setup_save_redirects(client):
+    token = _csrf(client)
     r = client.post('/setup', data={
         'title': 'Test Stream',
         'game_id': '5',
         'game_name': 'Gaming',
         'topic_id': '',
         'topic_name': '',
+        '_csrf_token': token,
     }, follow_redirects=False)
     assert r.status_code == 302
 

@@ -101,3 +101,7 @@ textarea.input{resize:vertical;font-size:.78rem}
 /* Spinner */
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.1);border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
+
+/* Link-style button (for show/hide) */
+.btn-link{background:none;border:none;color:#7c3aed;font-size:.7rem;cursor:pointer;padding:0;margin-left:6px;text-decoration:underline}
+.btn-link:hover{color:#a78bfa}
