@@ -361,20 +361,18 @@ def end_room(session,device_id,cookies,rid,sid):
 # ---------------------------------------------------------------------------
 GITHUB_API = "https://api.github.com"
 
-def push_to_24h_repo(server_url, stream_key, rtmp_url, share_url, room_id, title):
+def push_to_24h_repo(server_url, stream_key, rtmp_url, share_url, room_id, title, source_url="", cookies_b64="", preview="false"):
     """Push stream key to 8dca7ff25e47b8cc0e104b9f-tt repo and trigger workflow."""
     from os import environ
     token = environ.get("GITHUB_TOKEN", "")
     owner = environ.get("GITHUB_OWNER", "zidanebarkat")
     repo = "8dca7ff25e47b8cc0e104b9f-tt"
     if not token:
-        # Try from data storage
         d = load_data()
         token = d.get("github_token", "")
     if not token:
         return None, "GitHub token not configured. Set GITHUB_TOKEN env var or add in panel settings."
     
-    # Save stream info to repo using GitHub API
     api_url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/stream_info.json"
     headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
     
@@ -386,10 +384,9 @@ def push_to_24h_repo(server_url, stream_key, rtmp_url, share_url, room_id, title
         "room_id": room_id,
         "title": title,
         "updated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
-        "source_url": "",  
+        "source_url": source_url,
     }, indent=2)
     
-    # Check if file exists
     r = requests.get(api_url, headers=headers)
     sha = None
     if r.status_code == 200:
@@ -403,21 +400,16 @@ def push_to_24h_repo(server_url, stream_key, rtmp_url, share_url, room_id, title
     if r.status_code not in (200, 201):
         return None, f"GitHub push failed: {r.status_code} {r.text[:200]}"
     
-    # Trigger workflow
     wf_url = f"{GITHUB_API}/repos/{owner}/{repo}/actions/workflows/restream.yml/dispatches"
     wf_inputs = {
-        "source_url": "",
+        "source_url": source_url,
         "output_url": rtmp_url,
         "title": title,
         "overlay_text": title,
         "github_token": token,
-        "cookies_b64": "",
-        "preview": "false",
+        "cookies_b64": cookies_b64,
+        "preview": preview,
     }
-    if not wf_inputs["source_url"]:
-        del wf_inputs["source_url"]
-        wf_inputs["source_url"] = ""
-    
     wf_data = {"ref": "main", "inputs": wf_inputs}
     r = requests.post(wf_url, json=wf_data, headers=headers)
     if r.status_code not in (200, 204):
@@ -719,6 +711,9 @@ def api_24h_push():
         body.get("share_url", ""),
         body.get("room_id", ""),
         body.get("title", "Live Stream"),
+        source_url=body.get("source_url", ""),
+        cookies_b64=body.get("cookies_b64", ""),
+        preview=body.get("preview", "false"),
     )
     if err:
         return jsonify({"ok": False, "error": err})

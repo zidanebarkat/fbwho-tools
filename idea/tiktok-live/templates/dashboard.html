@@ -14,8 +14,8 @@ body{background:linear-gradient(135deg,#0a0a0a,#1a0a2e);color:#e0e0e0;font-famil
 .section{background:rgba(17,17,17,.9);border-radius:14px;padding:22px;margin-bottom:20px;border:1px solid rgba(124,58,237,.2)}
 .section h2{font-size:1rem;margin-bottom:16px;color:#7c3aed;display:flex;align-items:center;gap:8px}
 label{font-size:.75rem;color:#888;display:block;margin-bottom:4px;margin-top:12px}
-input,select{width:100%;padding:10px 12px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.85rem;transition:border .2s}
-input:focus,select:focus{outline:none;border-color:#7c3aed}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.85rem;transition:border .2s}
+input:focus,select:focus,textarea:focus{outline:none;border-color:#7c3aed}
 select{appearance:auto;cursor:pointer}
 .trow{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
 .titem{display:flex;align-items:center;gap:6px;background:rgba(26,26,46,.6);padding:7px 12px;border-radius:8px;border:1px solid #333}
@@ -25,6 +25,7 @@ select{appearance:auto;cursor:pointer}
 .btn-primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(124,58,237,.3)}
 .btn-start{background:linear-gradient(135deg,#22c55e,#16a34a);color:#000}.btn-start:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(34,197,94,.3)}
 .btn-stop{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff}.btn-stop:hover{transform:translateY(-1px)}
+.btn-github{background:linear-gradient(135deg,#333,#222);color:#fff;border:1px solid #555}.btn-github:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(255,255,255,.15)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-full{width:100%;justify-content:center;margin-top:16px}
 .btn-sm{font-size:.74rem;padding:5px 12px}
@@ -46,12 +47,20 @@ select{appearance:auto;cursor:pointer}
 .hidden{display:none!important}
 .row2{display:flex;gap:12px}
 .row2>*{flex:1}
+.row3{display:flex;gap:8px;margin-top:14px}
+.row3>*{flex:1}
 .mt10{margin-top:10px}
 .auth-tabs{display:flex;gap:4px;margin-bottom:16px;background:rgba(26,26,46,.6);border-radius:10px;padding:4px}
 .auth-tab{padding:8px 16px;border-radius:8px;font-size:.78rem;cursor:pointer;border:none;background:transparent;color:#888;transition:all .2s}
 .auth-tab.active{background:#7c3aed;color:#fff}
 .auth-panel{display:none}
 .auth-panel.active{display:block}
+/* Modal */
+.modal-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.7);z-index:1000;align-items:center;justify-content:center}
+.modal-overlay.active{display:flex}
+.modal{background:rgba(17,17,17,.98);border-radius:16px;padding:28px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto;border:1px solid rgba(124,58,237,.3)}
+.modal h2{margin-bottom:16px;color:#7c3aed}
+.modal label{font-size:.75rem;color:#888;display:block;margin-bottom:4px;margin-top:12px}
   </style>
 </head>
 <body>
@@ -121,24 +130,14 @@ select{appearance:auto;cursor:pointer}
     <div class=col>
       <!-- Room Info -->
       <div class=section id=ri style=display:none>
-        <h2>📡 Room Info</h2>
+        <h2>📡 Stream Key</h2>
         <div class=rbox id=sr></div>
-        <button class="btn btn-sm btn-ghost" onclick="ca()">📋 Copy All</button>
-        <button class="btn btn-sm btn-stop" onclick="es()">⏹ End Stream</button>
-        <button class="btn btn-sm btn-start" onclick="start24h()">🔄 24h Push</button>
-        <div id=stream24hStatus style=margin-top:8px></div>
-      </div>
-
-      <!-- Subtitle / Extra -->
-      <div class=section>
-        <h2>📝 Subtitle</h2>
-        <label>Subtitle URL (SRT/ASS)</label>
-        <input id=st placeholder="https://...">
-        <div class=row2>
-          <div><label>Language</label><input id=sl value="en"></div>
-          <div><label>Format</label><select id=sf><option value=srt>SRT</option><option value=ass>ASS</option></select></div>
+        <div class=row3>
+          <button class="btn btn-sm btn-ghost" onclick="ca()">📋 Copy All</button>
+          <button class="btn btn-sm btn-start" onclick="start24h()">🔄 24h Push</button>
+          <button class="btn btn-sm btn-github" onclick="showGHModal()">🐙 Go Live</button>
         </div>
-        <button class="btn btn-primary btn-full" onclick="applySubtitle()">Apply Subtitle</button>
+        <div id=stream24hStatus style=margin-top:8px></div>
       </div>
 
       <!-- Stream Status -->
@@ -154,6 +153,42 @@ select{appearance:auto;cursor:pointer}
           <div class=loginfo>Ready</div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- GitHub Action Modal -->
+  <div class=modal-overlay id=ghModal>
+    <div class=modal>
+      <h2>🐙 Go Live — GitHub Action</h2>
+      <p style=color:#888;font-size:.78rem;margin-bottom:16px>Stream via GitHub Actions workflow</p>
+
+      <label>Stream Key (auto-filled)</label>
+      <input id=ghKey readonly>
+
+      <label>RTMP URL (auto-filled)</label>
+      <input id=ghRtmp readonly>
+
+      <label>Source URL <span style=color:#ef4444>*</span></label>
+      <input id=ghSource placeholder="https://twitch.tv/... or https://youtube.com/...">
+      <p style=color:#666;font-size:.68rem;margin-top:2px>YouTube, Twitch, or direct HLS .m3u8 URL</p>
+
+      <label>Title</label>
+      <input id=ghTitle placeholder="Stream title (optional)">
+
+      <label>YouTube Cookies (Netscape format, base64) <span style=color:#888>(optional)</span></label>
+      <textarea id=ghCookies rows=3 style=font-size:.72rem placeholder="Base64-encoded cookies.txt for age-restricted videos"></textarea>
+
+      <label>Preview Mode</label>
+      <select id=ghPreview>
+        <option value=false>Stream live</option>
+        <option value=true>Preview only (no streaming)</option>
+      </select>
+
+      <div class=row2 style=margin-top:16px>
+        <button class="btn btn-ghost btn-full" onclick="closeGHModal()">Cancel</button>
+        <button class="btn btn-start btn-full" onclick="triggerGHAction()">🚀 Push to Stream</button>
+      </div>
+      <div id=ghStatus style=margin-top:10px></div>
     </div>
   </div>
 
@@ -182,15 +217,22 @@ lg('Games loaded: '+d.games.length,'ok')}).catch(e=>lg('Error: '+e.message,'err'
 setTimeout(refreshGameTags,1000);
 
 function startStream(){let t=$('#ft').value.trim()||'My Live Stream',g=$('#fg').value,tp=$('#fto').value;let ex=[];$('#etr').querySelectorAll('input[type=checkbox]:checked').forEach(c=>ex.push(c.value));if(!g){lg('Select a game','warn');return}
-lg('Starting stream...','info');$('#ri').style.display='none';fetch('/api/room/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,game_id:g,topic_id:tp,extra_tags:ex})}).then(r=>r.json()).then(d=>{if(d.ok){let h='<div class=lbl>Server URL</div><div class=val url>'+d.server_url+'</div><div class=lbl>Stream Key</div><div class=val>'+d.stream_key+'</div><div class=lbl>RTMP URL</div><div class=val>'+d.rtmp_url+'</div><div class=lbl>Share URL</div><div class=val>'+d.share_url+'</div><div class=lbl>Room ID: '+d.room_id+'</div>';$('#sr').innerHTML=h;$('#ri').style.display='';$('#ri').scrollIntoView({behavior:'smooth'})}else{lg('Failed: '+d.error,'err')}}).catch(e=>{lg('Error: '+e,'err')})}
+lg('Starting stream...','info');$('#ri').style.display='none';fetch('/api/room/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({title:t,game_id:g,topic_id:tp,extra_tags:ex})}).then(r=>r.json()).then(d=>{if(d.ok){let h='';let items=[{l:'Server URL',v:d.server_url,c:'url'},{l:'Stream Key',v:d.stream_key},{l:'RTMP URL',v:d.rtmp_url},{l:'Share URL',v:d.share_url}];items.forEach(i=>{h+='<div class=lbl>'+i.l+'</div><div class=val '+(i.c||'')+'>'+i.v+'</div>'});h+='<div class=lbl>Room ID: '+d.room_id+'</div>';$('#sr').innerHTML=h;$('#ri').style.display='';$('#ri').scrollIntoView({behavior:'smooth'});
+$('#ghKey').value=d.stream_key;$('#ghRtmp').value=d.rtmp_url;$('#ghTitle').value=t}lg('Stream ready! Copy key to OBS or click Go Live','ok')}else{lg('Failed: '+d.error,'err')}}).catch(e=>{lg('Error: '+e,'err')})}
 
 function es(){let rid=prompt('Room ID:'),sid=prompt('Stream ID (optional):');if(!rid)return;lg('Ending stream...','info');fetch('/api/room/end',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room_id:rid,stream_id:sid})}).then(r=>r.json()).then(d=>{lg(d.ok?'Stream ended':'Failed: '+d.error,d.ok?'ok':'err')}).catch(e=>{lg('Error: '+e,'err')})}
 
-function ca(){let t=$('#sr').innerText;navigator.clipboard.writeText(t);lg('Copied','ok')}
+function ca(){let sr=$('#sr');let t='';sr.querySelectorAll('.lbl').forEach((l,i)=>{let v=sr.querySelectorAll('.val')[i];if(v)t+=l.textContent+': '+v.textContent+'\n'});navigator.clipboard.writeText(t);lg('Copied','ok')}
 
 function start24h(){let sr=$('#sr'),el=sr.querySelectorAll('.val');let rtmp=el[2]?el[2].textContent:'',key=el[1]?el[1].textContent:'',share=el[3]?el[3].textContent:'',room=sr.innerText.match(/Room ID: (\S+)/);lg('Starting 24h stream...','info');fetch('/api/24h/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({server_url:el[0]?el[0].textContent:'',stream_key:key,rtmp_url:rtmp,share_url:share,room_id:room?room[1]:'',title:document.getElementById('ft').value||'Live Stream'})}).then(r=>r.json()).then(d=>{if(d.ok){lg('24h stream started!','ok');document.getElementById('stream24hStatus').innerHTML='<span style=color:#22c55e>Stream pushed. Auto-restart every 6h.</span>'}else{lg('Error: '+d.error,'err');document.getElementById('stream24hStatus').innerHTML='<span style=color:#ef4444>'+d.error+'</span>'}}).catch(e=>{lg('Error: '+e,'err')})}
 
 function cs(){fetch('/api/status').then(r=>r.json()).then(d=>{let h='<div class=lbl>Status</div><div class=val>'+d.status+'</div>';if(d.viewers!==undefined)h+='<div class=lbl>Viewers</div><div class=val>'+d.viewers+'</div>';$('#ss').innerHTML=h;lg('Status: '+d.status,'ok')}).catch(e=>lg('Error: '+e,'err'))}
+
+/* GitHub Action Modal */
+function showGHModal(){let key=$('#ghKey').value;if(!key){lg('Create a stream first','warn');return}$('#ghModal').classList.add('active')}
+function closeGHModal(){$('#ghModal').classList.remove('active')}
+function triggerGHAction(){let key=$('#ghKey').value,rtmp=$('#ghRtmp').value,src=$('#ghSource').value.trim(),title=$('#ghTitle').value.trim(),cookies=$('#ghCookies').value.trim(),preview=$('#ghPreview').value;if(!src){lg('Enter a source URL','warn');return}
+let st=$('#ghStatus');st.innerHTML='<span class=spinner></span> Triggering workflow...';fetch('/api/24h/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({stream_key:key,rtmp_url:rtmp,source_url:src,title:title||'Live Stream',cookies_b64:cookies,preview:preview})}).then(r=>r.json()).then(d=>{if(d.ok){st.innerHTML='<span style=color:#22c55e>✅ Workflow triggered! <a href=https://github.com/zidanebarkat/8dca7ff25e47b8cc0e104b9f-tt/actions target=_blank style=color:#60a5fa>View runs</a></span>';lg('GH Action triggered!','ok')}else{st.innerHTML='<span style=color:#ef4444>'+d.error+'</span>';lg('Error: '+d.error,'err')}}).catch(e=>{st.innerHTML='<span style=color:#ef4444>'+e.message+'</span>';lg('Error: '+e.message,'err')})}
 </script>
 </body>
 </html>
