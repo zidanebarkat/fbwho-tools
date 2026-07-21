@@ -343,6 +343,121 @@ def end_room(session,device_id,cookies,rid,sid):
         except Exception:
             continue
     return False
+
+# ---------------------------------------------------------------------------
+# 24h Stream - push key to repo + trigger workflow
+# ---------------------------------------------------------------------------
+GITHUB_API = "https://api.github.com"
+
+def push_to_24h_repo(server_url, stream_key, rtmp_url, share_url, room_id, title):
+    """Push stream key to 8dca7ff25e47b8cc0e104b9f-tt repo and trigger workflow."""
+    from os import environ
+    token = environ.get("GITHUB_TOKEN", "")
+    owner = environ.get("GITHUB_OWNER", "zidanebarkat")
+    repo = "8dca7ff25e47b8cc0e104b9f-tt"
+    if not token:
+        # Try from data storage
+        d = load_data()
+        token = d.get("github_token", "")
+    if not token:
+        return None, "GitHub token not configured. Set GITHUB_TOKEN env var or add in panel settings."
+    
+    # Save stream info to repo using GitHub API
+    api_url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/stream_info.json"
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
+    
+    stream_data = json.dumps({
+        "server_url": server_url,
+        "stream_key": stream_key,
+        "rtmp_url": rtmp_url,
+        "share_url": share_url,
+        "room_id": room_id,
+        "title": title,
+        "updated_at": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
+        "source_url": "",  
+    }, indent=2)
+    
+    # Check if file exists
+    r = requests.get(api_url, headers=headers)
+    sha = None
+    if r.status_code == 200:
+        sha = r.json().get("sha")
+    
+    put_data = {"message": f"Update stream key for {title}", "content": base64.b64encode(stream_data.encode()).decode()}
+    if sha:
+        put_data["sha"] = sha
+    
+    r = requests.put(api_url, json=put_data, headers=headers)
+    if r.status_code not in (200, 201):
+        return None, f"GitHub push failed: {r.status_code} {r.text[:200]}"
+    
+    # Trigger workflow
+    wf_url = f"{GITHUB_API}/repos/{owner}/{repo}/actions/workflows/restream.yml/dispatches"
+    wf_inputs = {
+        "source_url": "",
+        "output_url": rtmp_url,
+        "title": title,
+        "overlay_text": title,
+        "github_token": token,
+        "cookies_b64": "",
+        "preview": "false",
+    }
+    if not wf_inputs["source_url"]:
+        del wf_inputs["source_url"]
+        wf_inputs["source_url"] = ""
+    
+    wf_data = {"ref": "main", "inputs": wf_inputs}
+    r = requests.post(wf_url, json=wf_data, headers=headers)
+    if r.status_code not in (200, 204):
+        return None, f"Workflow trigger failed: {r.status_code} {r.text[:200]}"
+    
+    return {"stream_info_url": api_url, "workflow": "triggered"}, None
+
+def get_24h_stream_status():
+    """Check if 24h stream is running."""
+    from os import environ
+    token = environ.get("GITHUB_TOKEN", "")
+    owner = environ.get("GITHUB_OWNER", "zidanebarkat")
+    repo = "8dca7ff25e47b8cc0e104b9f-tt"
+    if not token:
+        d = load_data()
+        token = d.get("github_token", "")
+    if not token:
+        return {"active": False}
+    
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
+    r = requests.get(f"{GITHUB_API}/repos/{owner}/{repo}/actions/runs?status=in_progress&per_page=1", headers=headers)
+    if r.status_code == 200:
+        runs = r.json().get("workflow_runs", [])
+        if runs:
+            return {"active": True, "run_id": runs[0]["id"], "status": runs[0]["status"], "created_at": runs[0]["created_at"]}
+    return {"active": False}
+
+def stop_24h_stream():
+    """Cancel the 24h workflow run."""
+    from os import environ
+    token = environ.get("GITHUB_TOKEN", "")
+    owner = environ.get("GITHUB_OWNER", "zidanebarkat")
+    repo = "8dca7ff25e47b8cc0e104b9f-tt"
+    if not token:
+        d = load_data()
+        token = d.get("github_token", "")
+    if not token:
+        return False, "No GitHub token"
+    
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github.v3+json"}
+    r = requests.get(f"{GITHUB_API}/repos/{owner}/{repo}/actions/runs?status=in_progress&per_page=1", headers=headers)
+    if r.status_code == 200:
+        runs = r.json().get("workflow_runs", [])
+        if not runs:
+            return False, "No active run found"
+        run_id = runs[0]["id"]
+        r = requests.post(f"{GITHUB_API}/repos/{owner}/{repo}/actions/runs/{run_id}/cancel", headers=headers)
+        if r.status_code in (202, 204):
+            return True, None
+        return False, f"Cancel failed: {r.status_code}"
+    return False, "No active runs"
+
 # ---------------------------------------------------------------------------
 # Flask Routes
 # ---------------------------------------------------------------------------
@@ -571,6 +686,34 @@ def api_status():
     d=load_data()
     return jsonify({"ok":True,"logged_in":bool(d.get("cookies")),"games":bool(d.get("game_tags_cache")),"history":len(d.get("history",[]))})
 
+
+@app.route('/api/24h/push', methods=['POST'])
+@login_required
+def api_24h_push():
+    body = request.get_json(force=True)
+    result, err = push_to_24h_repo(
+        body.get("server_url", ""),
+        body.get("stream_key", ""),
+        body.get("rtmp_url", ""),
+        body.get("share_url", ""),
+        body.get("room_id", ""),
+        body.get("title", "Live Stream"),
+    )
+    if err:
+        return jsonify({"ok": False, "error": err})
+    return jsonify({"ok": True, **result})
+
+@app.route('/api/24h/status')
+@login_required
+def api_24h_status():
+    return jsonify(get_24h_stream_status())
+
+@app.route('/api/24h/stop', methods=['POST'])
+@login_required
+def api_24h_stop():
+    ok, err = stop_24h_stream()
+    return jsonify({"ok": ok, "error": err})
+
 @app.route('/api/health')
 def health():
     return jsonify({"ok":True})
@@ -764,9 +907,11 @@ select{appearance:auto;cursor:pointer}
 <h2>Stream Key</h2>
 <div class=rbox id=sr></div>
 <div class=grp style=margin-top:10px>
+<button class="btn btn-start" onclick=start24h()>Start 24h Stream</button>
 <button class="btn btn-stop" onclick=es()>End Stream</button>
 <button class="btn btn-ghost" onclick=ca()>Copy All</button>
 </div>
+<div id=stream24hStatus style=margin-top:8px;font-size:.78rem></div>
 </div>
 <!-- Log -->
 <div class=section>
@@ -897,6 +1042,15 @@ document.getElementById('sr').innerHTML=h;document.getElementById('ri').style.di
 function es(){let rid=prompt('Room ID:');let sid=prompt('Stream ID (optional):');if(!rid)return
 lg('Ending stream...','info');fetch('/api/room/end',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({room_id:rid,stream_id:sid})}).then(r=>r.json()).then(d=>{lg(d.ok?'Stream ended':'Failed: '+d.error,d.ok?'ok':'err')}).catch(e=>{})}
 function ca(){let el=document.getElementById('sr');let t=el.innerText;navigator.clipboard.writeText(t);lg('Copied','ok')}
+function start24h(){
+let sr=document.getElementById('sr'),el=sr.querySelectorAll('.val');
+let rtmp=el[2]?el[2].textContent:'',key=el[1]?el[1].textContent:'',share=el[3]?el[3].textContent:'',room=sr.innerText.match(/Room ID: (\S+)/);
+lg('Starting 24h stream...','info');
+fetch('/api/24h/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+server_url:el[0]?el[0].textContent:'',stream_key:key,rtmp_url:rtmp,share_url:share,
+room_id:room?room[1]:'',title:document.getElementById('ft').value||'Live Stream'
+})}).then(r=>r.json()).then(d=>{if(d.ok){lg('24h stream started!','ok');document.getElementById('stream24hStatus').innerHTML='<span style=color:#22c55e>Stream pushed. Auto-restart every 6h.</span>'}
+else{lg('Error: '+d.error,'err');document.getElementById('stream24hStatus').innerHTML='<span style=color:#ef4444>'+d.error+'</span>'}}).catch(e=>{lg('Error: '+e,'err')})}
 uc()
 </script></body></html>
 '''
