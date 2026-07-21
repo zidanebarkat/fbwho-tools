@@ -3,3 +3,4 @@ curl_cffi>=0.7
 python-dotenv>=1.0
 cryptography>=42.0
 qrcode[pil]>=7.0
+gunicorn>=22.0
