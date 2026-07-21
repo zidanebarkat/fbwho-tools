@@ -51,6 +51,14 @@ def login_required(f):
         return f(*a,**kw)
     return decorated
 
+def api_login_required(f):
+    @wraps(f)
+    def decorated(*a,**kw):
+        if not session.get('authenticated'):
+            return jsonify({"ok":False,"error":"Not authenticated"}),401
+        return f(*a,**kw)
+    return decorated
+
 # ---------------------------------------------------------------------------
 # Passport SDK helpers
 # ---------------------------------------------------------------------------
@@ -514,7 +522,7 @@ def dashboard():
 # API - QR Login
 # -------------------------------------------------------------------------
 @app.route('/api/qr/start',methods=['POST'])
-@login_required
+@api_login_required
 def api_qr_start():
     try:
         qr=qr_step1(make_session())
@@ -524,7 +532,7 @@ def api_qr_start():
         return jsonify({"ok":False,"error":str(e)})
 
 @app.route('/api/qr/poll',methods=['POST'])
-@login_required
+@api_login_required
 def api_qr_poll():
     body=request.get_json(force=True)
     d=load_data(); cqr=d.get("current_qr",{}) or {}
@@ -540,7 +548,7 @@ def api_qr_poll():
 # API - Web Login
 # -------------------------------------------------------------------------
 @app.route('/api/weblogin/start',methods=['POST'])
-@login_required
+@api_login_required
 def api_weblogin_start():
     try:
         info = web_login_step1()
@@ -552,7 +560,7 @@ def api_weblogin_start():
         return jsonify({"ok": False, "error": str(e)})
 
 @app.route('/api/weblogin/complete',methods=['POST'])
-@login_required
+@api_login_required
 def api_weblogin_complete():
     body = request.get_json(force=True)
     d = load_data()
@@ -596,7 +604,7 @@ def api_weblogin_callback():
 # API - Session ID
 # -------------------------------------------------------------------------
 @app.route('/api/sessionid',methods=['POST'])
-@login_required
+@api_login_required
 def api_sessionid():
     body = request.get_json(force=True)
     sid = (body.get("sessionid") or "").strip()
@@ -630,13 +638,13 @@ def api_sessionid():
 # API - Cookies (load/paste/clear)
 # -------------------------------------------------------------------------
 @app.route('/api/cookies',methods=['GET'])
-@login_required
+@api_login_required
 def api_get_cookies():
     d=load_data()
     return jsonify({"ok":True,"loaded":bool(d.get("cookies")),"count":len(d.get("cookies",{})),"sessionid":(d.get("cookies") or {}).get("sessionid","")})
 
 @app.route('/api/cookies',methods=['POST'])
-@login_required
+@api_login_required
 def api_set_cookies():
     body=request.get_json(force=True)
     raw=body.get("cookies","")
@@ -650,20 +658,20 @@ def api_set_cookies():
         return jsonify({"ok":False,"error":str(e)})
 
 @app.route('/api/cookies',methods=['DELETE'])
-@login_required
+@api_login_required
 def api_clear_cookies():
     d=load_data(); d["cookies"]={}; save_data(d)
     return jsonify({"ok":True})
 
 @app.route('/api/games',methods=['GET'])
-@login_required
+@api_login_required
 def api_games():
     tags=fetch_game_tags()
     d=load_data(); d["game_tags_cache"]=tags; save_data(d)
     return jsonify({"ok":True,"games":tags.get("games",{}),"topics":tags.get("topics",{}),"extras":tags.get("extras",{})})
 
 @app.route('/api/room/create',methods=['POST'])
-@login_required
+@api_login_required
 def api_create():
     opts=request.get_json(force=True)
     opts.setdefault("no_chat",opts.pop("chat","1")=="0")
@@ -683,7 +691,7 @@ def api_create():
     return jsonify({"ok":False,"error":"Room create failed. Account may lack live auth."})
 
 @app.route('/api/room/end',methods=['POST'])
-@login_required
+@api_login_required
 def api_end():
     body=request.get_json(force=True)
     d=load_data(); c=d.get("cookies",{}); did=d.get("current_device_id","") or c.get("device_id","") or "0"
@@ -694,14 +702,14 @@ def api_end():
         return jsonify({"ok":False,"error":str(e)})
 
 @app.route('/api/status')
-@login_required
+@api_login_required
 def api_status():
     d=load_data()
     return jsonify({"ok":True,"logged_in":bool(d.get("cookies")),"games":bool(d.get("game_tags_cache")),"history":len(d.get("history",[]))})
 
 
 @app.route('/api/24h/push', methods=['POST'])
-@login_required
+@api_login_required
 def api_24h_push():
     body = request.get_json(force=True)
     result, err = push_to_24h_repo(
@@ -717,12 +725,12 @@ def api_24h_push():
     return jsonify({"ok": True, **result})
 
 @app.route('/api/24h/status')
-@login_required
+@api_login_required
 def api_24h_status():
     return jsonify(get_24h_stream_status())
 
 @app.route('/api/24h/stop', methods=['POST'])
-@login_required
+@api_login_required
 def api_24h_stop():
     ok, err = stop_24h_stream()
     return jsonify({"ok": ok, "error": err})
