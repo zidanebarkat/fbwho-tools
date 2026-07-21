@@ -122,9 +122,13 @@ def fetch_game_tags():
     try:
         r=s.get("https://webcast16-normal-c-alisg.tiktokv.com/webcast/room/hashtag/list/",timeout=15)
         d=r.json()
-        return {str(t["id"]):t.get("show_name","") for t in d.get("data",{}).get("game_tag_list",[])}
+        data=d.get("data",{})
+        games={str(t["id"]):t.get("show_name","") for t in data.get("game_tag_list",[])}
+        topics={str(t["id"]):t.get("title","") for t in data.get("live_studio_hashtag",[])}
+        extras={str(t["id"]):t.get("title","") for t in data.get("hashtag",[]) if t.get("id")}
+        return {"games":games,"topics":topics,"extras":extras}
     except Exception:
-        return {}
+        return {"games":{},"topics":{},"extras":{}}
 
 # ---------------------------------------------------------------------------
 # QR Login
@@ -495,7 +499,16 @@ def logout():
 @login_required
 def dashboard():
     d=load_data()
-    return render_template_string(DASHBOARD_HTML,topics=TOPICS,game_tags=d.get("game_tags_cache",{}),history=list(reversed(d.get("history",[]))))
+    gtc=d.get("game_tags_cache",{})
+    if isinstance(gtc,dict) and "games" in gtc:
+        game_tags=gtc.get("games",{})
+        live_topics=gtc.get("topics",{})
+        extra_tags=gtc.get("extras",{})
+    else:
+        game_tags=gtc if isinstance(gtc,dict) else {}
+        live_topics=TOPICS
+        extra_tags={}
+    return render_template_string(DASHBOARD_HTML,topics=live_topics,game_tags=game_tags,extra_tags=extra_tags,history=list(reversed(d.get("history",[]))))
 
 # -------------------------------------------------------------------------
 # API - QR Login
@@ -647,7 +660,7 @@ def api_clear_cookies():
 def api_games():
     tags=fetch_game_tags()
     d=load_data(); d["game_tags_cache"]=tags; save_data(d)
-    return jsonify({"ok":True,"games":tags})
+    return jsonify({"ok":True,"games":tags.get("games",{}),"topics":tags.get("topics",{}),"extras":tags.get("extras",{})})
 
 @app.route('/api/room/create',methods=['POST'])
 @login_required
@@ -872,7 +885,7 @@ select{appearance:auto;cursor:pointer}
 <div><label>Title</label><input id=ft value="Live Stream" placeholder=Title></div>
 <div><label>Description</label><input id=fd value="" placeholder=Optional></div>
 </div>
-<label>Topic Category</label>
+<label>Topic Category (live_studio_hashtag)</label>
 <select id=ftpc>
 {% for id,name in topics.items() %}
 <option value="{{id}}"{% if id=="42"%}selected{% endif %}>{{name}} ({{id}})</option>
@@ -886,8 +899,10 @@ select{appearance:auto;cursor:pointer}
 {% endfor %}</select>
 <button class="btn btn-ghost btn-sm" onclick=rg() title=Refresh>&#x21bb;</button>
 </div>
+<button class="btn btn-ghost btn-sm" onclick=rg() title=Refresh>&#x21bb;</button>
+</div>
 <label>Hashtags</label>
-<input id=ftag value="" placeholder="freefire,ewc2026">
+<input id=ftag value="" placeholder="freefire,ewc2026,gaming">
 <label>Device ID</label>
 <input id=fdid value="" placeholder="Auto-generated">
 </div>
@@ -1032,6 +1047,12 @@ fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},
 function uc(){fetch('/api/cookies').then(r=>r.json()).then(d=>{if(d.ok&&d.loaded){document.getElementById('cs').classList.remove('hidden');document.getElementById('cc').textContent=d.count;ls(1,'sessionid: '+d.sessionid.slice(0,20)+'...')}else{document.getElementById('cs').classList.add('hidden');ls(0)};lastCookies=d.cookies||lastCookies}).catch(e=>{})}
 function clc(){fetch('/api/cookies',{method:'DELETE'}).then(()=>{lg('Cookies cleared','ok');uc()}).catch(e=>{})}
 function rg(){lg('Refreshing game tags...','info');fetch('/api/games').then(r=>r.json()).then(d=>{if(d.ok){lg('Game tags updated','ok');location.reload()}else lg('Error: '+d.error,'err')}).catch(e=>{})}
+function rh(i){
+let h=JSON.parse('{{history|tojson|safe}}')[i];
+if(h){document.getElementById('ft').value=h.title||'';
+if(h.topic)document.getElementById('ftpc').value=h.topic;
+if(h.game)document.getElementById('fgm').value=h.game;
+lg('Restored: '+h.title,'info')}}
 function cr(){let opts={title:document.getElementById("ft").value||'Live Stream',description:document.getElementById("fd").value,topic_id:document.getElementById("ftpc").value,game_tag_id:document.getElementById("fgm").value,hashtags:document.getElementById("ftag").value,device_id:document.getElementById("fdid").value,chat:document.getElementById("fc").checked,gifts:document.getElementById("fg").checked,multi_stream:document.getElementById("fm").checked,gen_replay:document.getElementById("fr").checked,age_restricted:document.getElementById("fa").checked,commercial:document.getElementById("ff").checked}
 lg('Creating room: '+opts.title,'info')
 fetch('/api/room/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(opts)}).then(r=>r.json()).then(d=>{if(d.ok){lg('Stream key generated!','ok')
@@ -1051,7 +1072,7 @@ server_url:el[0]?el[0].textContent:'',stream_key:key,rtmp_url:rtmp,share_url:sha
 room_id:room?room[1]:'',title:document.getElementById('ft').value||'Live Stream'
 })}).then(r=>r.json()).then(d=>{if(d.ok){lg('24h stream started!','ok');document.getElementById('stream24hStatus').innerHTML='<span style=color:#22c55e>Stream pushed. Auto-restart every 6h.</span>'}
 else{lg('Error: '+d.error,'err');document.getElementById('stream24hStatus').innerHTML='<span style=color:#ef4444>'+d.error+'</span>'}}).catch(e=>{lg('Error: '+e,'err')})}
-uc()
+uc();rg()
 </script></body></html>
 '''
 
