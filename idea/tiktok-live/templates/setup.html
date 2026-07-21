@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name=viewport content="width=device-width,initial-scale=1">
+  <title>Setup - TikTok Live Panel</title>
+  <style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:linear-gradient(135deg,#0a0a0a,#1a0a2e);color:#e0e0e0;font-family:system-ui;min-height:100vh}
+.page{max-width:520px;margin:0 auto;padding:40px 20px}
+h1{font-size:1.5rem;margin-bottom:6px;background:linear-gradient(135deg,#7c3aed,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:#888;font-size:.85rem;margin-bottom:30px}
+.card{background:rgba(17,17,17,.9);border-radius:14px;padding:24px;border:1px solid rgba(124,58,237,.2)}
+label{font-size:.75rem;color:#888;display:block;margin-bottom:4px;margin-top:14px}
+label:first-of-type{margin-top:0}
+input,select{width:100%;padding:10px 12px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.85rem;transition:border .2s}
+input:focus,select:focus{outline:none;border-color:#7c3aed}
+select{appearance:auto;cursor:pointer}
+.trow{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px}
+.titem{display:flex;align-items:center;gap:6px;background:rgba(26,26,46,.6);padding:7px 12px;border-radius:8px;border:1px solid #333}
+.titem input[type=checkbox]{width:16px;height:16px;accent-color:#7c3aed;cursor:pointer}
+.titem label{font-size:.75rem;margin:0;cursor:pointer;color:#ccc}
+.btn{padding:11px 22px;border:none;border-radius:8px;font-size:.85rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .2s;width:100%;justify-content:center;margin-top:20px}
+.btn-primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(124,58,237,.3)}
+.btn-ghost{background:rgba(255,255,255,.06);color:#888;border:1px solid #333;margin-top:10px}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.footer{text-align:center;margin-top:20px;color:#555;font-size:.72rem}
+  </style>
+</head>
+<body>
+  <div class=page>
+    <h1>Stream Setup</h1>
+    <p class=sub>One-time setup — saved until you change it</p>
+    <div class=card>
+      <form method=POST id=setupForm>
+        <label>Stream Title</label>
+        <input name=title value="{{ config.title or 'My Live Stream' }}" placeholder="My Live Stream">
+
+        <label>Game / Category</label>
+        <select name=game_id id=gameSelect>
+          <option value="">Select game</option>
+          {% for g in games %}
+          <option value="{{ g.id }}" data-name="{{ g.name }}" {% if config.game_id == g.id %}selected{% endif %}>{{ g.name }}</option>
+          {% endfor %}
+        </select>
+        <input type=hidden name=game_name id=gameName value="{{ config.game_name or '' }}">
+
+        <label>Topic</label>
+        <select name=topic_id id=topicSelect>
+          <option value="">None</option>
+          {% for t in topics %}
+          <option value="{{ t.id }}" data-name="{{ t.name }}" {% if config.topic_id == t.id %}selected{% endif %}>{{ t.name }}</option>
+          {% endfor %}
+        </select>
+        <input type=hidden name=topic_name id=topicName value="{{ config.topic_name or '' }}">
+
+        <label>Extra Tags</label>
+        <div class=trow>
+          {% for e in extras %}
+          <div class=titem>
+            <input type=checkbox name=extras value="{{ e.id }}" id="ex_{{ e.id }}" {% if e.id in config.get('extras', []) %}checked{% endif %}>
+            <input type=hidden name=extra_names value="{{ e.name }}">
+            <label for="ex_{{ e.id }}">{{ e.name }}</label>
+          </div>
+          {% endfor %}
+        </div>
+
+        <button type=submit class="btn btn-primary">Save & Continue</button>
+      </form>
+    </div>
+    <div class=footer>TikTok Live Studio Panel</div>
+  </div>
+  <script>
+document.getElementById('gameSelect').addEventListener('change',function(){
+  var o=this.options[this.selectedIndex];
+  document.getElementById('gameName').value=o.dataset.name||'';
+});
+document.getElementById('topicSelect').addEventListener('change',function(){
+  var o=this.options[this.selectedIndex];
+  document.getElementById('topicName').value=o.dataset.name||'';
+});
+  </script>
+</body>
+</html>

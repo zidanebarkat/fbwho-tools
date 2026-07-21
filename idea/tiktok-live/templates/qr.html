@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta name=viewport content="width=device-width,initial-scale=1">
+  <title>QR Login - TikTok Live Panel</title>
+  <style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:linear-gradient(135deg,#0a0a0a,#1a0a2e);color:#e0e0e0;font-family:system-ui;min-height:100vh}
+.page{max-width:480px;margin:0 auto;padding:40px 20px}
+h1{font-size:1.4rem;margin-bottom:6px;background:linear-gradient(135deg,#7c3aed,#22c55e);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.sub{color:#888;font-size:.85rem;margin-bottom:30px}
+.card{background:rgba(17,17,17,.9);border-radius:14px;padding:28px;border:1px solid rgba(124,58,237,.2);text-align:center}
+.qr-box{min-height:220px;display:flex;align-items:center;justify-content:center;margin:20px 0}
+.qr-box img{width:200px;border-radius:8px}
+.qr-box .status{color:#888;font-size:.85rem}
+.qr-box .error{color:#ef4444;font-size:.85rem}
+.qr-box .ok{color:#22c55e;font-size:.85rem}
+.tabs{display:flex;gap:4px;margin-bottom:20px;background:rgba(26,26,46,.6);border-radius:10px;padding:4px}
+.tab{padding:8px 14px;border-radius:8px;font-size:.78rem;cursor:pointer;border:none;background:transparent;color:#888;transition:all .2s;flex:1;text-align:center}
+.tab.active{background:#7c3aed;color:#fff}
+.panel{display:none}.panel.active{display:block}
+.label{font-size:.75rem;color:#888;display:block;margin-bottom:4px;margin-top:12px}
+.input{width:100%;padding:10px 12px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.85rem;transition:border .2s;box-sizing:border-box}
+.input:focus{outline:none;border-color:#7c3aed}
+textarea.input{resize:vertical;font-size:.78rem}
+.btn{padding:11px 22px;border:none;border-radius:8px;font-size:.82rem;cursor:pointer;font-weight:600;display:inline-flex;align-items:center;gap:6px;transition:all .2s;width:100%;justify-content:center;margin-top:14px}
+.btn-primary{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 4px 15px rgba(124,58,237,.3)}
+.footer{text-align:center;margin-top:20px;color:#555;font-size:.72rem}
+.spinner{display:inline-block;width:20px;height:20px;border:2px solid rgba(255,255,255,.1);border-top-color:#7c3aed;border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class=page>
+    <h1>TikTok Login</h1>
+    <p class=sub>Scan QR code with TikTok app — one-time per device</p>
+    <div class=card>
+      <div class=tabs>
+        <button class="tab active" onclick="showTab('qr')">QR Scan</button>
+        <button class="tab" onclick="showTab('session')">Session ID</button>
+        <button class=tab onclick="showTab('cookie')">Cookie File</button>
+      </div>
+
+      <div id=tQR class="panel active">
+        <div class=qr-box id=qrBox>
+          <div class=status><span class=spinner></span> Generating QR code...</div>
+        </div>
+        <button class="btn btn-primary" onclick="pollQR()">Check Status</button>
+      </div>
+
+      <div id=tSession class=panel>
+        <div class=label>Paste your session ID cookie</div>
+        <textarea class=input id=sessionInput rows=4 placeholder="sessionid=xxx; sessionid_ss=yyy; ..."></textarea>
+        <button class="btn btn-primary" onclick="submitSession()">Login</button>
+      </div>
+
+      <div id=tCookie class=panel>
+        <div class=label>Upload cookie JSON file</div>
+        <input type=file id=cookieFile accept=.json class=input style="padding:8px">
+        <button class="btn btn-primary" onclick="uploadCookie()">Upload & Login</button>
+      </div>
+    </div>
+    <div class=footer>TikTok Live Studio Panel</div>
+  </div>
+
+<script>
+var qrData=null;
+function showTab(t){
+  document.querySelectorAll('.tab,.panel').forEach(e=>e.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('t'+t.charAt(0).toUpperCase()+t.slice(1)).classList.add('active');
+  if(t==='qr'&&!qrData)startQR();
+}
+
+function startQR(){
+  document.getElementById('qrBox').innerHTML='<div class=status><span class=spinner></span> Generating QR code...</div>';
+  fetch('/api/qr/start',{method:'POST'}).then(r=>r.json()).then(d=>{
+    if(d.ok){
+      qrData=d;
+      document.getElementById('qrBox').innerHTML='<img src="'+d.qrcode_base64+'" style="width:200px;border-radius:8px"><div style="color:#888;font-size:.75rem;margin-top:10px">Scan with TikTok app</div>';
+      pollQR();
+    }else{
+      document.getElementById('qrBox').innerHTML='<div class=error>'+d.error+'</div>';
+    }
+  }).catch(e=>{
+    document.getElementById('qrBox').innerHTML='<div class=error>'+e.message+'</div>';
+  });
+}
+
+function pollQR(){
+  if(!qrData)return;
+  fetch('/api/qr/poll',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:qrData.token,device_id:qrData.device_id,domain:qrData.domain})}).then(r=>r.json()).then(d=>{
+    if(d.ok){
+      document.getElementById('qrBox').innerHTML='<div class=ok>Logged in! Redirecting...</div>';
+      setTimeout(function(){window.location.href='/dashboard'},800);
+    }else if(d.error==='expired'){
+      qrData=null;
+      document.getElementById('qrBox').innerHTML='<div class=error>QR expired</div><button class="btn btn-primary" onclick="startQR()" style="margin-top:10px">New QR Code</button>';
+    }else{
+      setTimeout(pollQR,3000);
+    }
+  }).catch(function(){setTimeout(pollQR,3000)});
+}
+
+function submitSession(){
+  var v=document.getElementById('sessionInput').value.trim();
+  if(!v)return;
+  var cookies={};
+  v.split(';').forEach(function(p){
+    var parts=p.trim().split('=');
+    if(parts.length>=2)cookies[parts[0].trim()]=parts.slice(1).join('=').trim();
+  });
+  fetch('/api/sessionid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionid:cookies.sessionid||v})}).then(r=>r.json()).then(d=>{
+    if(d.ok){
+      document.getElementById('qrBox').innerHTML='<div class=ok>Logged in as '+d.nickname+'! Redirecting...</div>';
+      setTimeout(function(){window.location.href='/dashboard'},800);
+    }else{
+      alert(d.error);
+    }
+  }).catch(e=>alert(e.message));
+}
+
+function uploadCookie(){
+  var f=document.getElementById('cookieFile').files[0];
+  if(!f)return;
+  var r=new FileReader();
+  r.onload=function(){
+    fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:r.result})}).then(r=>r.json()).then(d=>{
+      if(d.ok){
+        document.getElementById('qrBox').innerHTML='<div class=ok>Logged in! Redirecting...</div>';
+        setTimeout(function(){window.location.href='/dashboard'},800);
+      }else{
+        alert(d.error);
+      }
+    }).catch(e=>alert(e.message));
+  };
+  r.readAsText(f);
+}
+
+startQR();
+</script>
+</body>
+</html>
