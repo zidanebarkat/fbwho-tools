@@ -4,7 +4,7 @@ TikTok Live Studio Panel - Web UI for QR login, room creation, and stream key ma
 Hosted on Render.com. Full parameter control for TikTok Live Studio.
 """
 
-import base64, hashlib, json, os, secrets, string, sys, time, urllib.parse
+import base64, hashlib, json, os, secrets, string, sys, time, urllib.parse, uuid
 from functools import wraps
 from pathlib import Path
 
@@ -80,6 +80,9 @@ def apply_ps(params,data=None):
 
 def gen_device_id():
     return "".join(secrets.choice(string.digits) for _ in range(19))
+
+def gen_session_id():
+    return secrets.token_hex(16)
 
 def make_session():
     s=requests.Session(impersonate="chrome")
@@ -171,6 +174,105 @@ def qr_step2(session,token,device_id,domain):
         except Exception:
             continue
     raise TimeoutError("QR not scanned")
+
+# ---------------------------------------------------------------------------
+# TikTok Web Login (passport/web/login endpoint)
+# ---------------------------------------------------------------------------
+def web_login_step1():
+    did = gen_device_id()
+    sid = gen_session_id()
+    referer = f"https://www.tiktok.com/login/phone-or-email?lang=en"
+    return {"device_id": did, "session_id": sid, "referer": referer}
+
+def web_login_step2(device_id, session_id, login_ticket, redirect_data):
+    """Exchange the login ticket for session cookies via passport/web/login/v2/."""
+    s = make_session()
+    did = device_id or gen_device_id()
+    cookies_dict = {}
+    for host in api_hosts():
+        url = f"https://{host}/passport/web/login/v2/"
+        params = apply_ps({
+            "aid": str(LIVE_STUDIO_AID),
+            "app_name": "tiktok_web_sdk",
+            "device_platform": "web",
+            "channel": "channel_pc_web",
+            "version_code": "170400",
+            "version_name": "17.4.0",
+            "cookie_enabled": "true",
+            "screen_width": "1920",
+            "screen_height": "1080",
+            "browser_language": "en-US",
+            "browser_platform": "Win32",
+            "browser_name": "Mozilla",
+            "browser_version": "5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+            "browser_online": "true",
+            "tz_name": "America/New_York",
+            "cursor": redirect_data or "",
+            "request_id": str(int(time.time() * 1000)),
+            "identity": "passport",
+            "account_sdk_source": "web",
+            "sdk_version": PASSPORT_WEB_SDK_VERSION,
+            "device_id": did,
+            "verifyFp": f"verify_{did}",
+        })
+        headers = {
+            "accept": "application/json, text/plain, */*",
+            "content-type": "application/x-www-form-urlencoded",
+            "referer": "https://www.tiktok.com/login/phone-or-email",
+            **tg_headers(),
+            "x-ss-stub": xss(None) or "",
+        }
+        try:
+            r = s.post(url, params=params, headers=headers, impersonate="chrome", timeout=20)
+            data = r.json()
+            if data.get("status_code") == 0:
+                for c in s.cookies.jar:
+                    cookies_dict[c.name] = c.value
+                return cookies_dict
+        except Exception:
+            continue
+    return cookies_dict
+
+# ---------------------------------------------------------------------------
+# Session ID validation
+# ---------------------------------------------------------------------------
+def validate_session_id(sessionid_value, device_id=None):
+    """Validate a sessionid by fetching user info from TikTok."""
+    did = device_id or gen_device_id()
+    s = make_session()
+    s.cookies.set("sessionid", sessionid_value, domain=".tiktokv.com")
+    s.cookies.set("sessionid", sessionid_value, domain=".tiktok.com")
+    try:
+        r = s.get(
+            "https://www.tiktok.com/passport/web/user/info/",
+            params={
+                "aid": str(LIVE_STUDIO_AID),
+                "device_id": did,
+                "identity": "passport",
+                "account_sdk_source": "web",
+                "sdk_version": PASSPORT_WEB_SDK_VERSION,
+            },
+            headers={
+                "accept": "application/json, text/plain, */*",
+                "referer": "https://www.tiktok.com/",
+                **tg_headers(),
+            },
+            impersonate="chrome",
+            timeout=15,
+        )
+        data = r.json()
+        if data.get("status_code") == 0:
+            user = data.get("data", {}).get("user", {})
+            return {
+                "valid": True,
+                "username": user.get("username", ""),
+                "nickname": user.get("nickname", ""),
+                "uid": user.get("uid", ""),
+            }
+    except Exception:
+        pass
+    # Fallback: try creating a minimal room to check auth
+    return {"valid": False, "username": "", "nickname": "", "uid": ""}
 
 # ---------------------------------------------------------------------------
 # Room create/end
@@ -281,7 +383,7 @@ def dashboard():
     return render_template_string(DASHBOARD_HTML,topics=TOPICS,game_tags=d.get("game_tags_cache",{}),history=list(reversed(d.get("history",[]))))
 
 # -------------------------------------------------------------------------
-# API
+# API - QR Login
 # -------------------------------------------------------------------------
 @app.route('/api/qr/start',methods=['POST'])
 @login_required
@@ -306,6 +408,99 @@ def api_qr_poll():
     except Exception as e:
         return jsonify({"ok":False,"error":str(e)})
 
+# -------------------------------------------------------------------------
+# API - Web Login
+# -------------------------------------------------------------------------
+@app.route('/api/weblogin/start',methods=['POST'])
+@login_required
+def api_weblogin_start():
+    try:
+        info = web_login_step1()
+        d = load_data()
+        d["weblogin_state"] = {"device_id": info["device_id"], "session_id": info["session_id"]}
+        save_data(d)
+        return jsonify({"ok": True, "login_url": info["referer"], "device_id": info["device_id"]})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+@app.route('/api/weblogin/complete',methods=['POST'])
+@login_required
+def api_weblogin_complete():
+    body = request.get_json(force=True)
+    d = load_data()
+    state = d.get("weblogin_state", {}) or {}
+    did = state.get("device_id") or body.get("device_id", "")
+    try:
+        cookies = web_login_step2(did, state.get("session_id", ""), body.get("ticket", ""), body.get("redirect_data", ""))
+        if cookies and cookies.get("sessionid"):
+            d["cookies"] = cookies
+            d["weblogin_state"] = {}
+            d["current_qr"] = {}
+            save_data(d)
+            return jsonify({"ok": True, "cookies": cookies, "sessionid": cookies.get("sessionid", ""), "sid_tt": cookies.get("sid_tt", "")})
+        return jsonify({"ok": False, "error": "Login failed - no session cookie received. Try another method."})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)})
+
+@app.route('/api/weblogin/callback',methods=['GET','POST'])
+def api_weblogin_callback():
+    """Handle redirect from TikTok login if using OAuth redirect flow."""
+    if not session.get('authenticated'):
+        return redirect(url_for('login'))
+    code = request.args.get("code", "")
+    redirect_data = request.args.get("redirect_data", "")
+    ticket = request.args.get("ticket", "")
+    d = load_data()
+    state = d.get("weblogin_state", {}) or {}
+    did = state.get("device_id", "")
+    try:
+        cookies = web_login_step2(did, state.get("session_id", ""), ticket, redirect_data or code)
+        if cookies and cookies.get("sessionid"):
+            d["cookies"] = cookies
+            d["weblogin_state"] = {}
+            d["current_qr"] = {}
+            save_data(d)
+        return redirect(url_for('dashboard'))
+    except Exception:
+        return redirect(url_for('dashboard'))
+
+# -------------------------------------------------------------------------
+# API - Session ID
+# -------------------------------------------------------------------------
+@app.route('/api/sessionid',methods=['POST'])
+@login_required
+def api_sessionid():
+    body = request.get_json(force=True)
+    sid = (body.get("sessionid") or "").strip()
+    if not sid:
+        return jsonify({"ok": False, "error": "No session ID provided"})
+    device_id = body.get("device_id") or gen_device_id()
+    info = validate_session_id(sid, device_id)
+    if info.get("valid"):
+        did = gen_device_id()
+        cookies = {
+            "sessionid": sid,
+            "device_id": did,
+        }
+        d = load_data()
+        d["cookies"] = cookies
+        d["current_device_id"] = did
+        d["current_qr"] = {}
+        save_data(d)
+        return jsonify({
+            "ok": True,
+            "sessionid": sid,
+            "username": info.get("username", ""),
+            "nickname": info.get("nickname", ""),
+            "uid": info.get("uid", ""),
+            "device_id": did,
+        })
+    else:
+        return jsonify({"ok": False, "error": "Invalid or expired session ID. Please log in to TikTok first and copy a valid sessionid cookie."})
+
+# -------------------------------------------------------------------------
+# API - Cookies (load/paste/clear)
+# -------------------------------------------------------------------------
 @app.route('/api/cookies',methods=['GET'])
 @login_required
 def api_get_cookies():
@@ -435,6 +630,15 @@ select{appearance:auto;cursor:pointer}
 .help{font-size:.68rem;color:#666;margin-top:2px}
 .small{font-size:.72rem;color:#888}
 .grp{display:flex;gap:6px;flex-wrap:wrap}
+.auth-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.auth-tab{padding:8px 14px;border-radius:8px;border:1px solid #333;background:rgba(26,26,46,.4);color:#888;font-size:.78rem;cursor:pointer;font-weight:500;transition:all .2s}
+.auth-tab:hover{background:rgba(124,58,237,.15);color:#ccc}
+.auth-tab.active{background:rgba(124,58,237,.25);border-color:#7c3aed;color:#7c3aed;font-weight:600}
+.auth-panel{border:1px solid rgba(124,58,237,.15);border-radius:10px;padding:16px;background:rgba(26,26,46,.3)}
+.auth-panel.hidden{display:none}
+.auth-divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:#555;font-size:.72rem}
+.auth-divider::before,.auth-divider::after{content:'';flex:1;height:1px;background:#333}
+.or-label{color:#666;font-size:.68rem;text-align:center;margin:6px 0}
 </style></head>
 <body>
 <div class=header>
@@ -446,16 +650,21 @@ select{appearance:auto;cursor:pointer}
 </div>
 <div class=mainer>
 <div class=col>
-<!-- QR Section -->
-<div class=section id=qsect>
-<h2>QR Login</h2>
-<div id=qrp style=text-align:center;padding:10px>
-<button class="btn btn-primary" onclick=sq()>Get QR Code</button>
-<div class=small style=margin-top:8px>or</div>
-<div class=grp style=justify-content:center>
-<button class="btn btn-ghost" onclick=lc()>Load Cookies</button>
-<button class="btn btn-ghost" onclick=pc()>Paste JSON</button>
+<!-- Auth Section -->
+<div class=section id=authsect>
+<h2>Authentication</h2>
+<div class=auth-tabs>
+<div class="auth-tab active" onclick=switchAuth('qr') id=atab_qr>QR Login</div>
+<div class="auth-tab" onclick=switchAuth('web') id=atab_web>Web Login</div>
+<div class="auth-tab" onclick=switchAuth('sid') id=atab_sid>Session ID</div>
+<div class="auth-tab" onclick=switchAuth('cookie') id=atab_cookie>Load Cookies</div>
 </div>
+
+<!-- QR Login Panel -->
+<div class=auth-panel id=apanel_qr>
+<div id=qrp style=text-align:center>
+<button class="btn btn-primary" onclick=sq()>Get QR Code</button>
+<div class=or-label>Scan with TikTok mobile app</div>
 </div>
 <div id=qs class=hidden style=text-align:center>
 <div id=qt class=small style=color:#f59e0b;margin-bottom:4px></div>
@@ -464,8 +673,55 @@ select{appearance:auto;cursor:pointer}
 </div>
 <div id=qp class=hidden style=text-align:center;padding:16px><div class=sp></div><div class=small style=margin-top:6px;color:#60a5fa>Waiting...</div></div>
 <div id=qd class=hidden style=text-align:center;padding:10px><span style=color:#22c55e>Logged in!</span><div class=small id=qci></div></div>
-<div id=cs style=margin-top:8px class=hidden><div style=display:flex;align-items:center;gap:6px><span class="dot g"></span>Cookies: <span id=cc>0</span></div><button class="btn btn-sm btn-ghost" onclick=clc()>Clear</button></div>
 </div>
+
+<!-- Web Login Panel -->
+<div class=auth-panel hidden id=apanel_web>
+<div style=text-align:center>
+<div class=small style=margin-bottom:12px;color:#888">Opens TikTok login page. Enter credentials there, then paste the redirect info below.</div>
+<button class="btn btn-primary" onclick=wl_open() id=wl_open_btn>Open TikTok Login</button>
+<div class=or-label>After logging in, paste the callback URL or redirect data:</div>
+<label style=margin-top:12px>Paste redirect URL or code</label>
+<input id=wl_redirect placeholder="Paste full redirect URL or code here..." style=margin-top:4px>
+<label>Or paste cookies JSON from browser after login</label>
+<textarea id=wl_cookies placeholder='{"sessionid":"...","sid_tt":"..."}' rows=3 style=margin-top:4px;width:100%;padding:10px;border:1px solid #333;border-radius:8px;background:rgba(26,26,46,.8);color:#e0e0e0;font-size:.82rem;font-family:monospace;resize:vertical"></textarea>
+<div style=display:flex;gap:8px;margin-top:12px>
+<button class="btn btn-primary" onclick=wl_complete() style=flex:1 id=wl_complete_btn>Complete Login</button>
+</div>
+<div id=wl_status class=small style=margin-top:8px></div>
+</div>
+</div>
+
+<!-- Session ID Panel -->
+<div class=auth-panel hidden id=apanel_sid>
+<div class=small style=margin-bottom:10px;color:#888">Paste your <code style="color:#7c3aed">sessionid</code> cookie value from TikTok.</div>
+<label>Session ID</label>
+<input id=sid_input placeholder="e.g. abc123def456..." style=margin-top:4px>
+<label>Device ID (optional, auto-generated if empty)</label>
+<input id=sid_did placeholder="Auto-generated">
+<div style=display:flex;gap:8px;margin-top:12px>
+<button class="btn btn-primary" onclick=sid_submit() style=flex:1 id=sid_submit_btn>Validate & Save</button>
+</div>
+<div class=help style=margin-top:8px">How to get sessionid: Open TikTok in browser, open DevTools (F12) &rarr; Application &rarr; Cookies &rarr; copy the value of <code>sessionid</code>.</div>
+<div id=sid_status class=small style=margin-top:8px></div>
+</div>
+
+<!-- Load Cookies Panel -->
+<div class=auth-panel hidden id=apanel_cookie>
+<div style=text-align:center>
+<button class="btn btn-primary" onclick=lc()>Load Cookies File</button>
+<div class=or-label>or</div>
+<button class="btn btn-ghost" onclick=pc()>Paste Cookies JSON</button>
+</div>
+</div>
+
+<!-- Cookie Status (shared) -->
+<div id=cs style=margin-top:12px class=hidden>
+<div style=display:flex;align-items:center;gap:6px><span class="dot g"></span>Cookies: <span id=cc>0</span></div>
+<button class="btn btn-sm btn-ghost" onclick=clc()>Clear</button>
+</div>
+</div>
+
 <!-- Config -->
 <div class=section>
 <h2>Stream Config</h2>
@@ -534,10 +790,21 @@ select{appearance:auto;cursor:pointer}
 </div>
 </div>
 <script>
-let pi=null,lastCookies={};
+let pi=null,lastCookies={},currentAuth='qr';
+
 function lg(m,t='info'){let b=document.getElementById('lb'),d=document.createElement('div');d.className=t;d.textContent='['+new Date().toLocaleTimeString()+'] '+m;b.appendChild(d);b.scrollTop=b.scrollHeight}
 function cls(){document.getElementById('lb').innerHTML='<div style=color:#666>Cleared</div>'}
 function ls(h,s){document.getElementById('ls').innerHTML=(h?'<span class="dot g"></span>'+s:'<span class="dot r"></span>Not logged in')}
+
+function switchAuth(method){
+currentAuth=method;
+['qr','web','sid','cookie'].forEach(m=>{
+document.getElementById('atab_'+m).classList.toggle('active',m===method);
+document.getElementById('apanel_'+m).classList.toggle('hidden',m!==method);
+});
+}
+
+// ---- QR Login ----
 function sq(){document.getElementById('qrp').hidden=1;document.getElementById('qs').classList.remove('hidden');document.getElementById('qp').classList.remove('hidden');document.getElementById('qd').classList.add('hidden');lg('Getting QR...','info')
 fetch('/api/qr/start',{method:'POST'}).then(r=>r.json()).then(d=>{if(!d.ok){lg(d.error,'err');return}
 document.getElementById('qp').classList.add('hidden');document.getElementById('qs').classList.remove('hidden');
@@ -550,9 +817,73 @@ fetch('/api/qr/poll',{method:'POST',headers:{'Content-Type':'application/json'},
 else if(d2.error!='expired'&&r>0)lg('Poll: '+d2.error,'err')
 }).catch(e=>{})
 },2000)}).catch(e=>{lg(e,'err')})}
+
+// ---- Web Login ----
+function wl_open(){
+lg('Opening TikTok login page...','info');
+let btn=document.getElementById('wl_open_btn');
+btn.disabled=true;btn.textContent='Opening...';
+fetch('/api/weblogin/start',{method:'POST'}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Open TikTok Login';
+if(!d.ok){lg(d.error,'err');return}
+lg('Login URL ready. Opening in new tab...','ok');
+let w=window.open(d.login_url,'_blank','width=500,height=700');
+if(!w||w.closed){lg('Popup blocked. Please allow popups and try again, or open the URL manually.','err');
+document.getElementById('wl_status').innerHTML='<span style=color:#ef4444>Popup blocked - allow popups or open TikTok login manually</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Open TikTok Login';lg('Error: '+e,'err')})}
+
+function wl_complete(){
+let redirect=document.getElementById('wl_redirect').value.trim();
+let cookiesJson=document.getElementById('wl_cookies').value.trim();
+let statusEl=document.getElementById('wl_status');
+let btn=document.getElementById('wl_complete_btn');
+if(cookiesJson){
+lg('Importing cookies from browser...','info');
+btn.disabled=true;btn.textContent='Validating...';
+fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:cookiesJson})}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Complete Login';
+if(d.ok){lg('Cookies imported!','ok');uc();statusEl.innerHTML='<span style=color:#22c55e>Login successful!</span>';}
+else{lg('Error: '+d.error,'err');statusEl.innerHTML='<span style=color:#ef4444>'+d.error+'</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Complete Login';lg('Error: '+e,'err')});
+return;
+}
+if(redirect){
+lg('Completing web login...','info');
+btn.disabled=true;btn.textContent='Validating...';
+fetch('/api/weblogin/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({redirect_data:redirect})}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Complete Login';
+if(d.ok){lg('Web login successful!','ok');lastCookies=d.cookies;uc();statusEl.innerHTML='<span style=color:#22c55e>Login successful! sessionid: '+d.sessionid.slice(0,20)+'...</span>';}
+else{lg('Error: '+d.error,'err');statusEl.innerHTML='<span style=color:#ef4444>'+d.error+'</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Complete Login';lg('Error: '+e,'err')});
+return;
+}
+statusEl.innerHTML='<span style=color:#ef4444>Please paste the redirect URL/code, or paste cookies JSON above.</span>';
+}
+
+// ---- Session ID ----
+function sid_submit(){
+let sid=document.getElementById('sid_input').value.trim();
+let did=document.getElementById('sid_did').value.trim();
+let statusEl=document.getElementById('sid_status');
+let btn=document.getElementById('sid_submit_btn');
+if(!sid){statusEl.innerHTML='<span style=color:#ef4444>Please enter a session ID</span>';return;}
+lg('Validating session ID...','info');
+btn.disabled=true;btn.textContent='Validating...';
+fetch('/api/sessionid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionid:sid,device_id:did||undefined})}).then(r=>r.json()).then(d=>{
+btn.disabled=false;btn.textContent='Validate & Save';
+if(d.ok){
+lg('Session ID valid! User: @'+d.username,'ok');
+statusEl.innerHTML='<span style=color:#22c55e>Logged in as @'+d.username+' ('+d.nickname+')</span>';
+uc();
+}else{lg('Session ID invalid: '+d.error,'err');statusEl.innerHTML='<span style=color:#ef4444>'+d.error+'</span>';}
+}).catch(e=>{btn.disabled=false;btn.textContent='Validate & Save';lg('Error: '+e,'err');statusEl.innerHTML='<span style=color:#ef4444>Network error</span>'})}
+
+// ---- Load/Paste Cookies ----
 function lc(){let e=document.createElement('input');e.type='file';e.accept='.json';e.onchange=async ev=>{let f=ev.target.files[0];if(!f)return;lg('Loading cookies file...','info');try{let t=await f.text();let d=JSON.parse(t);if(Array.isArray(d))d=d.reduce((a,c)=>{a[c.name]=c.value;return a},{});r=await fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:d})});rd=await r.json();if(rd.ok){lg('Cookies loaded','ok');uc()}else lg('Error: '+rd.error,'err')}catch(e2){lg('Parse error: '+e2,'err')}};e.click()}
 function pc(){let v=prompt('Paste cookies JSON (dict or array)');if(!v)return
 fetch('/api/cookies',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cookies:v})}).then(r=>r.json()).then(d=>{if(d.ok){lg('Cookies loaded','ok');uc()}else lg('Error: '+d.error,'err')}).catch(e=>{})}
+
+// ---- Shared ----
 function uc(){fetch('/api/cookies').then(r=>r.json()).then(d=>{if(d.ok&&d.loaded){document.getElementById('cs').classList.remove('hidden');document.getElementById('cc').textContent=d.count;ls(1,'sessionid: '+d.sessionid.slice(0,20)+'...')}else{document.getElementById('cs').classList.add('hidden');ls(0)};lastCookies=d.cookies||lastCookies}).catch(e=>{})}
 function clc(){fetch('/api/cookies',{method:'DELETE'}).then(()=>{lg('Cookies cleared','ok');uc()}).catch(e=>{})}
 function rg(){lg('Refreshing game tags...','info');fetch('/api/games').then(r=>r.json()).then(d=>{if(d.ok){lg('Game tags updated','ok');location.reload()}else lg('Error: '+d.error,'err')}).catch(e=>{})}
